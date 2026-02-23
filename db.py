@@ -9,6 +9,23 @@ from typing import Optional
 
 DB_PATH = os.getenv("DATABASE_URL", "/data/finsignal.db")
 
+SEED_FEEDS = [
+    # Priority
+    {"name": "NICE Actimize Blog",       "url": "https://www.niceactimize.com/blog/rss",                    "feed_type": "blog", "priority": "priority", "category": "Financial Crime", "active": 1},
+    {"name": "ACAMS Today",              "url": "https://www.acamstoday.org/feed/",                          "feed_type": "rss",  "priority": "priority", "category": "AML",            "active": 1},
+    {"name": "FinCEN News",              "url": "https://www.fincen.gov/news/rss.xml",                       "feed_type": "rss",  "priority": "priority", "category": "Regulatory",     "active": 1},
+    # Standard
+    {"name": "FATF News",                "url": "https://www.fatf-gafi.org/en/publications/rss.xml",         "feed_type": "rss",  "priority": "standard",  "category": "Regulatory",     "active": 1},
+    {"name": "Thomson Reuters Compliance","url": "https://www.thomsonreuters.com/en/press-releases.rss",     "feed_type": "rss",  "priority": "standard",  "category": "Compliance",     "active": 1},
+    {"name": "ACFCS News",               "url": "https://www.acfcs.org/feed/",                               "feed_type": "rss",  "priority": "standard",  "category": "Financial Crime","active": 1},
+    {"name": "Global Financial Integrity","url": "https://gfintegrity.org/feed/",                            "feed_type": "rss",  "priority": "standard",  "category": "Financial Crime","active": 1},
+    {"name": "Wolters Kluwer Compliance","url": "https://www.wolterskluwer.com/en/expert-insights/rss",      "feed_type": "rss",  "priority": "standard",  "category": "Compliance",     "active": 1},
+    {"name": "KYC360",                   "url": "https://kyc360.riskscreen.com/feed/",                       "feed_type": "rss",  "priority": "standard",  "category": "KYC",            "active": 1},
+    {"name": "AML Intelligence",         "url": "https://amlintelligence.com/feed/",                         "feed_type": "rss",  "priority": "standard",  "category": "AML",            "active": 1},
+    {"name": "Refinitiv Fraud",          "url": "https://www.refinitiv.com/en/crime-and-fraud-insights/rss", "feed_type": "rss",  "priority": "standard",  "category": "Fraud",          "active": 1},
+    {"name": "SWIFT Insights",           "url": "https://www.swift.com/news-events/news/rss",                "feed_type": "rss",  "priority": "standard",  "category": "Payments",       "active": 1},
+]
+
 SEED_INFLUENCERS = [
     {"name": "Tom Schofield",         "handle": "tomschofield_aml",        "niche": "AML",       "follower_count": 0},
     {"name": "Kieran Beer",            "handle": "kieranbeer",              "niche": "AML",       "follower_count": 0},
@@ -92,6 +109,18 @@ def ensure_tables() -> None:
                 last_interacted TEXT,
                 created_at      TEXT DEFAULT (datetime('now'))
             );
+
+            CREATE TABLE IF NOT EXISTS feeds (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                name         TEXT NOT NULL,
+                url          TEXT UNIQUE,
+                feed_type    TEXT DEFAULT 'rss',
+                priority     TEXT DEFAULT 'standard',
+                category     TEXT,
+                active       INTEGER DEFAULT 1,
+                last_fetched TEXT,
+                created_at   TEXT DEFAULT (datetime('now'))
+            );
         """)
         # Add missing columns to existing tables (idempotent migrations)
         try:
@@ -119,6 +148,14 @@ def ensure_tables() -> None:
                     }
                     for inf in SEED_INFLUENCERS
                 ],
+            )
+
+        feed_count = conn.execute("SELECT COUNT(*) FROM feeds").fetchone()[0]
+        if feed_count == 0:
+            conn.executemany(
+                """INSERT OR IGNORE INTO feeds (name, url, feed_type, priority, category, active)
+                   VALUES (:name, :url, :feed_type, :priority, :category, :active)""",
+                SEED_FEEDS,
             )
 
 
@@ -263,3 +300,47 @@ def log_influencer_interaction(row_id: int) -> None:
             "UPDATE influencers SET last_interacted = datetime('now') WHERE id = ?",
             (row_id,),
         )
+
+
+# ── Feeds ─────────────────────────────────────────────────────────────────────
+
+def get_feeds(priority: Optional[str] = None) -> list[dict]:
+    with _conn() as conn:
+        if priority:
+            rows = conn.execute(
+                "SELECT * FROM feeds WHERE priority = ? ORDER BY name ASC",
+                (priority,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM feeds ORDER BY priority DESC, name ASC"
+            ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def save_feed(name: str, url: str, feed_type: str, priority: str, category: str, active: int = 1) -> None:
+    with _conn() as conn:
+        conn.execute(
+            """INSERT OR IGNORE INTO feeds (name, url, feed_type, priority, category, active)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (name, url, feed_type, priority, category, active),
+        )
+
+
+def update_feed(row_id: int, name: str, url: str, feed_type: str, priority: str, category: str, active: int) -> None:
+    with _conn() as conn:
+        conn.execute(
+            """UPDATE feeds SET name=?, url=?, feed_type=?, priority=?, category=?, active=?
+               WHERE id=?""",
+            (name, url, feed_type, priority, category, active, row_id),
+        )
+
+
+def toggle_feed_active(row_id: int, active: int) -> None:
+    with _conn() as conn:
+        conn.execute("UPDATE feeds SET active = ? WHERE id = ?", (active, row_id))
+
+
+def delete_feed(row_id: int) -> None:
+    with _conn() as conn:
+        conn.execute("DELETE FROM feeds WHERE id = ?", (row_id,))
