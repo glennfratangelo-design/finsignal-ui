@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 
 import streamlit as st
 import db
-from pages import content_queue, comment_queue, influencer_manager, feed_manager
+from pages import content_queue, comment_queue, influencer_manager, feed_manager, strategy_manager, analytics
 
 API_URL = os.getenv("API_URL", "http://localhost:8000")
 
@@ -358,10 +358,12 @@ tab_labels = [
     f"💬  Comment Queue{f'  ({pending_count})' if pending_count else ''}",
     "🤝  Influencer Manager",
     "📡  Feed Manager",
+    "⚙️  Strategy",
+    "📊  Analytics",
 ]
 
-t1, t2, t3, t4 = st.columns(4)
-tab_cols = [t1, t2, t3, t4]
+t1, t2, t3, t4, t5, t6 = st.columns(6)
+tab_cols = [t1, t2, t3, t4, t5, t6]
 
 for i, (col, label) in enumerate(zip(tab_cols, tab_labels)):
     with col:
@@ -388,3 +390,7 @@ elif active == 2:
     influencer_manager.render()
 elif active == 3:
     feed_manager.render()
+elif active == 4:
+    strategy_manager.render()
+elif active == 5:
+    analytics.render(api_url=API_URL)

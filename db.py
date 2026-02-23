@@ -209,3 +209,46 @@ def toggle_feed_active(row_id: int, active: int) -> None:
 
 def delete_feed(row_id: int) -> None:
     _delete(f"/feeds/{row_id}")
+
+
+# ── Strategy ──────────────────────────────────────────────────────────────────
+
+def get_strategy() -> dict:
+    result = _get("/strategy")
+    return result if isinstance(result, dict) else {}
+
+
+def update_strategy(data: dict) -> None:
+    _put("/strategy", {"data": data})
+
+
+def get_strategy_health() -> dict:
+    result = _get("/strategy/health")
+    if not isinstance(result, dict):
+        result = {}
+    return {
+        "comments_today":     result.get("comments_today", 0),
+        "max_comments_day":   result.get("max_comments_day", 5),
+        "posts_this_week":    result.get("posts_this_week", 0),
+        "max_posts_week":     result.get("max_posts_week", 8),
+        "topic_distribution": result.get("topic_distribution", {}),
+        "target_weights":     result.get("target_weights", {}),
+        "archived_this_week": result.get("archived_this_week", 0),
+        "flagged_items":      result.get("flagged_items", []),
+    }
+
+
+# ── Analytics ─────────────────────────────────────────────────────────────────
+
+def score_post(text: str) -> dict:
+    result = _post("/analytics/score-post", {"text": text})
+    if not isinstance(result, dict):
+        result = {}
+    return {
+        "overall":     result.get("overall", 0),
+        "hook":        result.get("hook", 0),
+        "data":        result.get("data", 0),
+        "readability": result.get("readability", 0),
+        "cta":         result.get("cta", 0),
+        "suggestion":  result.get("suggestion", ""),
+    }
