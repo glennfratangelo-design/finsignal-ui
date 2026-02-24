@@ -140,6 +140,7 @@ def add_influencer(
     niche: str,
     follower_count: int,
     relationship: str,
+    notes: str = "",
 ) -> None:
     _post("/influencers", {
         "name": name,
@@ -148,6 +149,7 @@ def add_influencer(
         "niche": niche,
         "follower_count": follower_count,
         "relationship": relationship,
+        "notes": notes,
     })
 
 
