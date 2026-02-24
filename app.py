@@ -16,7 +16,7 @@ st.set_page_config(
     page_title="FinSignal",
     page_icon="📊",
     layout="wide",
-    initial_sidebar_state="auto",
+    initial_sidebar_state="collapsed",
 )
 
 # ── Global CSS ─────────────────────────────────────────────────────────────────
@@ -29,6 +29,7 @@ st.markdown(
     header { visibility: hidden; }
     [data-testid="collapsedControl"] { display: none; }
     section[data-testid="stSidebar"] > div:first-child { padding-top: 1.5rem; }
+    section[data-testid="stSidebar"] { display: none !important; }
     .block-container { padding-top: 1.2rem; padding-bottom: 2rem; }
 
     /* ── Metric cards ── */

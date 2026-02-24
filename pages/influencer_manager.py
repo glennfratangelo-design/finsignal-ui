@@ -108,15 +108,6 @@ def _fmt_followers(n: int) -> str:
 def render() -> None:
     st.markdown(_CSS, unsafe_allow_html=True)
 
-    # ── Sidebar: filters only ──────────────────────────────────────────────────
-    with st.sidebar:
-        st.markdown("### 🤝 Filter Influencers")
-        search = st.text_input("🔍 Search name or handle", placeholder="e.g. Kieran, AML…")
-        niche_filter = st.multiselect("Niche", options=_ALL_NICHES, default=[], placeholder="All niches")
-        rel_filter = st.multiselect(
-            "Relationship", options=_ALL_RELATIONSHIPS_FULL, default=[], placeholder="All stages"
-        )
-
     # ── Page header row ────────────────────────────────────────────────────────
     hdr_left, hdr_right = st.columns([3, 1])
     with hdr_left:
@@ -134,6 +125,16 @@ def render() -> None:
         if st.button(btn_label, key="im_toggle_add", type="primary", use_container_width=True):
             st.session_state["im_show_add_form"] = not showing
             st.rerun()
+
+    # ── Inline filters ─────────────────────────────────────────────────────────
+    fil1, fil2, fil3 = st.columns([2, 2, 1])
+    with fil1:
+        search = st.text_input("Search", placeholder="🔍 Name or handle…", label_visibility="collapsed")
+    with fil2:
+        niche_filter = st.multiselect("Niche", options=_ALL_NICHES, default=[], placeholder="Filter by niche", label_visibility="collapsed")
+    with fil3:
+        rel_filter = st.multiselect("Stage", options=_ALL_RELATIONSHIPS_FULL, default=[], placeholder="Any stage", label_visibility="collapsed")
+    st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 
     # ── Inline Add Influencer form ─────────────────────────────────────────────
     if st.session_state.get("im_show_add_form", False):

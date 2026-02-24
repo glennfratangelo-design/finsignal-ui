@@ -37,9 +37,10 @@ _CSS = """
 .post-card {
     background: #1E2130;
     border-radius: 8px;
-    padding: 18px 20px;
+    padding: 24px;
     margin-bottom: 6px;
     border: 1px solid #2D3748;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.35);
 }
 .post-card-header {
     display: flex;
@@ -336,24 +337,32 @@ def _render_cards(rows: list[dict], api_url: str) -> None:
 
 
 def render(api_url: str = "http://localhost:8000") -> None:
-    drafts = db.get_content_queue("draft")
+    drafts      = db.get_content_queue("draft")
     draft_saved = db.get_content_queue("draft_saved")
-    scheduled = db.get_content_queue("scheduled")
-    posted = db.get_content_queue("posted")
+    scheduled   = db.get_content_queue("scheduled")
+    posted      = db.get_content_queue("posted")
 
-    d_label = f"🟡 Drafts ({len(drafts)})" if drafts else "🟡 Drafts"
-    s_label = f"🔵 Scheduled ({len(scheduled)})" if scheduled else "🔵 Scheduled"
+    # ── Filter chips ───────────────────────────────────────────────────────────
+    if "cq_filter" not in st.session_state:
+        st.session_state.cq_filter = "draft"
 
-    sub1, sub2, sub3, sub4 = st.tabs([d_label, "📝 Saved Drafts", s_label, "🟢 Posted"])
+    filters = [
+        ("draft",       f"Drafts ({len(drafts)})"        if drafts       else "Drafts",     drafts),
+        ("draft_saved", f"Saved ({len(draft_saved)})"    if draft_saved  else "Saved",      draft_saved),
+        ("scheduled",   f"Scheduled ({len(scheduled)})"  if scheduled    else "Scheduled",  scheduled),
+        ("posted",      f"Posted ({len(posted)})"         if posted       else "Posted",     posted),
+    ]
 
-    with sub1:
-        _render_cards(drafts, api_url)
+    chip_cols = st.columns(4)
+    for col, (filt, label, _rows) in zip(chip_cols, filters):
+        with col:
+            is_active = st.session_state.cq_filter == filt
+            if st.button(label, key=f"cq_chip_{filt}", type="primary" if is_active else "secondary", use_container_width=True):
+                st.session_state.cq_filter = filt
+                st.rerun()
 
-    with sub2:
-        _render_cards(draft_saved, api_url)
+    st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 
-    with sub3:
-        _render_cards(scheduled, api_url)
-
-    with sub4:
-        _render_cards(posted, api_url)
+    active_filter = st.session_state.cq_filter
+    rows_to_show  = next((rows for filt, _, rows in filters if filt == active_filter), drafts)
+    _render_cards(rows_to_show, api_url)

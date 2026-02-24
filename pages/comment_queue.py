@@ -260,17 +260,27 @@ def render(api_url: str = "http://localhost:8000") -> None:
     posted   = [r for r in all_rows if r["status"] == "posted"]
     ignored  = [r for r in all_rows if r["status"] == "ignored"]
 
-    p_label = f"🟡 Pending ({len(pending)})" if pending else "🟡 Pending"
-    sub1, sub2, sub3, sub4 = st.tabs([p_label, "🗂️ Saved", "🟢 Posted", "⚫ Ignored"])
+    # ── Filter chips ───────────────────────────────────────────────────────────
+    if "cm_filter" not in st.session_state:
+        st.session_state.cm_filter = "pending"
 
-    with sub1:
-        _render_cards(pending, api_url)
+    filters = [
+        ("pending", f"Pending ({len(pending)})"  if pending else "Pending",  pending),
+        ("saved",   f"Saved ({len(saved)})"       if saved   else "Saved",    saved),
+        ("posted",  f"Posted ({len(posted)})"     if posted  else "Posted",   posted),
+        ("ignored", f"Ignored ({len(ignored)})"   if ignored else "Ignored",  ignored),
+    ]
 
-    with sub2:
-        _render_cards(saved, api_url)
+    chip_cols = st.columns(4)
+    for col, (filt, label, _rows) in zip(chip_cols, filters):
+        with col:
+            is_active = st.session_state.cm_filter == filt
+            if st.button(label, key=f"cm_chip_{filt}", type="primary" if is_active else "secondary", use_container_width=True):
+                st.session_state.cm_filter = filt
+                st.rerun()
 
-    with sub3:
-        _render_cards(posted, api_url)
+    st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 
-    with sub4:
-        _render_cards(ignored, api_url)
+    active_filter = st.session_state.cm_filter
+    rows_to_show  = next((rows for filt, _, rows in filters if filt == active_filter), pending)
+    _render_cards(rows_to_show, api_url)
