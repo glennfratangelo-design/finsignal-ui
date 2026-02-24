@@ -1163,3 +1163,76 @@ def render() -> None:
     if st.button("Save Quality Gate", key="strat_save_quality", type="primary"):
         db.update_strategy({"min_post_quality_score": new_min_score})
         st.toast("Quality gate saved", icon="✅")
+
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+    st.markdown("<hr style='border-color:#2D3748;'/>", unsafe_allow_html=True)
+    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+
+    # ── Section 7: Connection Growth ───────────────────────────────────────────
+    st.markdown("<div class='section-header'>Connection Growth</div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div style='font-size:0.83rem;color:#9AA0B2;margin-bottom:16px;'>"
+        "Configure how FinSignal sends LinkedIn connection requests on your behalf.</div>",
+        unsafe_allow_html=True,
+    )
+
+    conn_auto = bool(cfg.get("connection_auto_send", False))
+    new_auto  = st.toggle(
+        "Automatically send connection requests",
+        value=conn_auto,
+        key="strat_conn_auto",
+    )
+
+    if new_auto:
+        st.markdown(
+            "<div style='background:#2D1A05;border:1px solid #F5A623;border-radius:6px;"
+            "padding:10px 14px;font-size:0.82rem;color:#F5A623;margin-bottom:12px;'>"
+            "⚠️ LinkedIn may flag automated connection patterns. FinSignal uses randomized timing "
+            "and daily limits to minimize risk. <strong>You are responsible for compliance with "
+            "LinkedIn's terms of service.</strong></div>",
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+    st.markdown("**Connection Pace**", unsafe_allow_html=False)
+    current_pace = cfg.get("connection_pace", "moderate")
+    pace_options = ["slow", "moderate", "active"]
+    pace_labels  = ["Slow (1-2/day)", "Moderate (3-5/day)", "Active (6-8/day)"]
+    pace_idx     = pace_options.index(current_pace) if current_pace in pace_options else 1
+
+    p1, p2, p3, _ = st.columns([1, 1, 1, 3])
+    new_pace = current_pace
+    for col, key, label in zip([p1, p2, p3], pace_options, pace_labels):
+        with col:
+            is_sel = current_pace == key
+            if st.button(
+                label,
+                key=f"strat_pace_{key}",
+                type="primary" if is_sel else "secondary",
+                use_container_width=True,
+            ):
+                new_pace = key
+    if new_pace == "active" and current_pace != "active":
+        st.markdown(
+            "<div style='background:#2D1A05;border:1px solid #F5A623;border-radius:6px;"
+            "padding:8px 12px;font-size:0.8rem;color:#F5A623;margin-top:6px;'>"
+            "Higher volumes increase detection risk. Consider staying at Moderate.</div>",
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    pause_weekends = bool(cfg.get("connection_pause_weekends", True))
+    new_pause_weekends = st.toggle(
+        "Pause on weekends",
+        value=pause_weekends,
+        key="strat_conn_pause_weekends",
+    )
+
+    st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+    if st.button("Save Connection Settings", key="strat_save_conn", type="primary"):
+        db.update_strategy({
+            "connection_auto_send":      new_auto,
+            "connection_pace":           new_pace,
+            "connection_pause_weekends": new_pause_weekends,
+        })
+        st.toast("Connection settings saved", icon="✅")

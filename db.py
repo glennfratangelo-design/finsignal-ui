@@ -118,48 +118,69 @@ def update_comment_text(row_id: int, text: str) -> None:
 
 # ── Influencers ───────────────────────────────────────────────────────────────
 
-def get_influencers(
-    search: Optional[str] = None,
-    niches: Optional[list] = None,
-    relationships: Optional[list] = None,
-) -> list[dict]:
-    params: dict = {}
-    if search:
-        params["search"] = search
-    if niches:
-        params["niches"] = ",".join(niches)
-    if relationships:
-        params["relationships"] = ",".join(relationships)
-    result = _get("/influencers", **params)
+def get_influencers(status: Optional[str] = None) -> list[dict]:
+    result = _get("/influencers", status=status)
     return result if isinstance(result, list) else []
 
 
-def add_influencer(
-    name: str,
-    linkedin_url: str,
-    handle: str,
-    niche: str,
-    follower_count: int,
-    relationship: str,
-    notes: str = "",
-) -> None:
+def add_influencer(name: str, linkedin_handle: str, niche: str, notes: str = "") -> None:
     _post("/influencers", {
         "name": name,
-        "linkedin_url": linkedin_url,
-        "handle": handle,
+        "linkedin_handle": linkedin_handle,
         "niche": niche,
-        "follower_count": follower_count,
-        "relationship": relationship,
         "notes": notes,
     })
 
 
-def update_influencer_relationship(row_id: int, relationship: str) -> None:
-    _put(f"/influencers/{row_id}/relationship", {"relationship": relationship})
+def hibernate_influencer(row_id: int) -> None:
+    _put(f"/influencers/{row_id}/hibernate")
 
 
-def log_influencer_interaction(row_id: int) -> None:
-    _put(f"/influencers/{row_id}/interact")
+def activate_influencer(row_id: int) -> None:
+    _put(f"/influencers/{row_id}/activate")
+
+
+def delete_influencer(row_id: int) -> dict:
+    return _delete(f"/influencers/{row_id}")
+
+
+# ── Discover ──────────────────────────────────────────────────────────────────
+
+def get_discover_suggestions() -> list[dict]:
+    result = _get("/discover/suggestions")
+    return result if isinstance(result, list) else []
+
+
+def trigger_discover_generate() -> dict:
+    return _post("/discover/generate")
+
+
+def accept_discover_suggestion(row_id: int) -> dict:
+    return _post(f"/discover/suggestions/{row_id}/accept")
+
+
+def dismiss_discover_suggestion(row_id: int) -> dict:
+    return _post(f"/discover/suggestions/{row_id}/dismiss")
+
+
+def get_discover_pattern() -> dict:
+    result = _get("/discover/pattern")
+    return result if isinstance(result, dict) else {}
+
+
+# ── Connections ───────────────────────────────────────────────────────────────
+
+def get_connections(status: Optional[str] = None) -> list[dict]:
+    result = _get("/connections", status=status)
+    return result if isinstance(result, list) else []
+
+
+def send_connection(row_id: int) -> dict:
+    return _post(f"/connections/{row_id}/send")
+
+
+def dismiss_connection(row_id: int) -> dict:
+    return _post(f"/connections/{row_id}/dismiss")
 
 
 # ── Feeds ─────────────────────────────────────────────────────────────────────

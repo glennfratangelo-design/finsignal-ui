@@ -1,13 +1,11 @@
 """
-Influencer Manager — 3-column card grid with inline Add Influencer form.
+Influencer Manager — Watchlist + Discover tabs.
 """
 
 import streamlit as st
 import db
 
 _ALL_NICHES = ["AML", "KYC", "Fraud", "Sanctions", "RegTech", "AI/Agentic", "Compliance", "Regulatory"]
-_ALL_RELATIONSHIPS = ["Cold", "Warm", "Partner"]
-_ALL_RELATIONSHIPS_FULL = ["Cold", "Warm", "Connected", "Partner"]
 
 _NICHE_COLORS = {
     "AML":        "#0A66C2",
@@ -20,40 +18,29 @@ _NICHE_COLORS = {
     "Regulatory": "#DC2626",
 }
 
-_REL_COLORS = {
-    "Cold":      "#6B7280",
-    "Warm":      "#F5A623",
-    "Connected": "#0A66C2",
-    "Partner":   "#057642",
-}
-
 _CSS = """
 <style>
-.inf-card {
-    background: #1E2130;
-    border-radius: 8px;
-    border: 1px solid #2D3748;
-    padding: 16px;
-    margin-bottom: 0;
-    transition: border-color 0.2s;
+.inf-row {
+    display: flex;
+    align-items: center;
+    padding: 10px 14px;
+    border-bottom: 1px solid #2D3748;
+    gap: 12px;
 }
-.inf-card:hover { border-color: #0A66C2; }
-.inf-card-name {
-    font-size: 0.92rem;
+.inf-row:hover { background: #1A1C2A; }
+.inf-name {
+    font-size: 0.9rem;
     font-weight: 700;
     color: #FAFAFA;
-    margin-bottom: 4px;
+    flex: 2;
 }
-.inf-card-handle {
-    font-size: 0.75rem;
+.inf-handle {
+    font-size: 0.82rem;
     color: #0A66C2;
-    margin-bottom: 8px;
+    flex: 2;
 }
-.inf-card-meta {
-    font-size: 0.74rem;
-    color: #9AA0B2;
-    margin-top: 8px;
-}
+.inf-handle a { color: #0A66C2; text-decoration: none; }
+.inf-handle a:hover { text-decoration: underline; }
 .pill {
     display: inline-block;
     padding: 2px 9px;
@@ -62,195 +49,378 @@ _CSS = """
     font-weight: 700;
     color: #fff;
     margin-right: 4px;
-    margin-bottom: 4px;
+}
+.pill-active    { background: #057642; }
+.pill-hibernated { background: #92400E; color: #FDE68A; }
+.discover-card {
+    background: #1E2130;
+    border: 1px solid #2D3748;
+    border-radius: 8px;
+    padding: 16px 18px;
+    margin-bottom: 12px;
+}
+.discover-name {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #FAFAFA;
+    margin-bottom: 2px;
+}
+.discover-headline {
+    font-size: 0.8rem;
+    color: #9AA0B2;
+    margin-bottom: 8px;
+}
+.discover-reason {
+    font-size: 0.83rem;
+    color: #CBD5E1;
+    font-style: italic;
+    margin-bottom: 10px;
+    line-height: 1.5;
+}
+.pattern-card {
+    background: #1A2744;
+    border: 1px solid #2563EB;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    font-size: 0.85rem;
+    color: #93C5FD;
+    line-height: 1.5;
 }
 .add-form-panel {
     background: #161825;
     border: 1px solid #2D3748;
     border-radius: 10px;
-    padding: 20px 22px;
-    margin-bottom: 20px;
-}
-.add-form-title {
-    font-size: 0.95rem;
-    font-weight: 700;
-    color: #FAFAFA;
+    padding: 18px 20px;
     margin-bottom: 16px;
 }
 .empty-state {
     text-align: center;
     color: #6B7280;
-    font-size: 0.9rem;
-    padding: 60px 0;
+    font-size: 0.88rem;
+    padding: 48px 0;
+}
+.section-header {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #FAFAFA;
+    margin-bottom: 10px;
 }
 </style>
 """
 
 
 def _niche_pill(niche: str) -> str:
-    color = _NICHE_COLORS.get(niche, "#555")
-    return f'<span class="pill" style="background:{color};">{niche}</span>'
+    color = _NICHE_COLORS.get(niche, "#374151")
+    return f'<span class="pill" style="background:{color};">{niche or "—"}</span>'
 
 
-def _rel_pill(rel: str) -> str:
-    color = _REL_COLORS.get(rel, "#555")
-    return f'<span class="pill" style="background:{color};">{rel}</span>'
+def _status_pill(status: str) -> str:
+    if status == "hibernated":
+        return '<span class="pill pill-hibernated">Hibernated</span>'
+    return '<span class="pill pill-active">Active</span>'
 
 
-def _fmt_followers(n: int) -> str:
-    if n >= 1_000_000:
-        return f"{n / 1_000_000:.1f}M"
-    if n >= 1000:
-        return f"{n / 1000:.1f}K"
-    return str(n) if n else "—"
+def _init_im_states() -> None:
+    defaults = {
+        "im_tab":            0,     # 0=Watchlist, 1=Discover
+        "im_filter":         "All", # All / Active / Hibernated
+        "im_show_add":       False,
+        "im_remove_confirm": None,  # id of row pending confirmation
+    }
+    for k, v in defaults.items():
+        if k not in st.session_state:
+            st.session_state[k] = v
 
 
-def render() -> None:
-    st.markdown(_CSS, unsafe_allow_html=True)
+# ── Watchlist tab ─────────────────────────────────────────────────────────────
 
-    # ── Page header row ────────────────────────────────────────────────────────
-    hdr_left, hdr_right = st.columns([3, 1])
-    with hdr_left:
+def _render_watchlist() -> None:
+    # Header row
+    hdr_l, hdr_r = st.columns([3, 1])
+    with hdr_l:
+        count_row = db.get_influencers()
+        total = len(count_row)
         st.markdown(
-            "<div style='font-size:1.3rem;font-weight:800;color:#FAFAFA;margin-bottom:4px;'>"
-            "🤝 Influencer Manager</div>"
-            "<div style='font-size:0.83rem;color:#6B7280;margin-bottom:16px;'>"
-            "Track and engage your network of financial crime thought leaders.</div>",
+            f"<div class='section-header'>Watchlist "
+            f"<span style='font-size:0.78rem;font-weight:400;color:#9AA0B2;'>"
+            f"({total})</span></div>",
             unsafe_allow_html=True,
         )
-    with hdr_right:
-        st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
-        showing = st.session_state.get("im_show_add_form", False)
-        btn_label = "✕ Cancel" if showing else "➕ Add Influencer"
-        if st.button(btn_label, key="im_toggle_add", type="primary", use_container_width=True):
-            st.session_state["im_show_add_form"] = not showing
+    with hdr_r:
+        showing = st.session_state.im_show_add
+        if st.button(
+            "✕ Cancel" if showing else "➕ Add Influencer",
+            key="im_toggle_add",
+            type="primary",
+            use_container_width=True,
+        ):
+            st.session_state.im_show_add = not showing
             st.rerun()
 
-    # ── Inline filters ─────────────────────────────────────────────────────────
-    fil1, fil2, fil3 = st.columns([2, 2, 1])
-    with fil1:
-        search = st.text_input("Search", placeholder="🔍 Name or handle…", label_visibility="collapsed")
-    with fil2:
-        niche_filter = st.multiselect("Niche", options=_ALL_NICHES, default=[], placeholder="Filter by niche", label_visibility="collapsed")
-    with fil3:
-        rel_filter = st.multiselect("Stage", options=_ALL_RELATIONSHIPS_FULL, default=[], placeholder="Any stage", label_visibility="collapsed")
-    st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-
-    # ── Inline Add Influencer form ─────────────────────────────────────────────
-    if st.session_state.get("im_show_add_form", False):
-        st.markdown("<div class='add-form-panel'><div class='add-form-title'>New Influencer</div></div>",
-                    unsafe_allow_html=True)
+    # Add form
+    if st.session_state.im_show_add:
+        st.markdown("<div class='add-form-panel'>", unsafe_allow_html=True)
         with st.form("im_add_form", clear_on_submit=True):
-            col1, col2 = st.columns(2)
-            with col1:
+            c1, c2 = st.columns(2)
+            with c1:
                 new_name   = st.text_input("Full Name *", placeholder="e.g. Kieran Beer")
-                new_handle = st.text_input("LinkedIn Handle *", placeholder="e.g. kieranbeer  (no @)")
-            with col2:
+                new_handle = st.text_input("LinkedIn Handle *", placeholder="kieranbeer  (no @)")
+            with c2:
                 new_niche = st.selectbox("Niche", _ALL_NICHES)
-                new_rel   = st.selectbox("Relationship Stage", _ALL_RELATIONSHIPS)
-            new_notes = st.text_area("Notes (optional)", placeholder="e.g. Met at ACAMS conference, strong AML perspective", height=80)
-
-            save_col, cancel_col = st.columns([1, 1])
+                new_notes = st.text_input("Notes (optional)", placeholder="Optional context")
+            save_col, _ = st.columns([1, 3])
             with save_col:
-                submitted = st.form_submit_button("💾 Save Influencer", type="primary", use_container_width=True)
-            with cancel_col:
-                cancelled = st.form_submit_button("Cancel", use_container_width=True)
-
+                submitted = st.form_submit_button("💾 Save", type="primary", use_container_width=True)
             if submitted:
                 if not new_name.strip() or not new_handle.strip():
-                    st.error("Full Name and LinkedIn Handle are required.")
+                    st.error("Name and handle are required.")
                 else:
-                    handle_clean = new_handle.strip().lstrip("@")
-                    url = f"https://www.linkedin.com/in/{handle_clean}/"
                     db.add_influencer(
                         name=new_name.strip(),
-                        linkedin_url=url,
-                        handle=handle_clean,
+                        linkedin_handle=new_handle.strip().lstrip("@"),
                         niche=new_niche,
-                        follower_count=0,
-                        relationship=new_rel,
                         notes=new_notes.strip(),
                     )
-                    st.session_state["im_show_add_form"] = False
-                    st.toast(f"✅ Influencer added: {new_name.strip()}")
+                    st.session_state.im_show_add = False
+                    st.toast(f"Added {new_name.strip()} to watchlist")
                     st.rerun()
-            if cancelled:
-                st.session_state["im_show_add_form"] = False
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # Filter chips
+    filter_cols = st.columns([1, 1, 1, 6])
+    for i, label in enumerate(["All", "Active", "Hibernated"]):
+        with filter_cols[i]:
+            is_active = st.session_state.im_filter == label
+            if st.button(
+                label,
+                key=f"im_filter_{label}",
+                type="primary" if is_active else "secondary",
+                use_container_width=True,
+            ):
+                st.session_state.im_filter = label
                 st.rerun()
 
-    # ── Load & display grid ────────────────────────────────────────────────────
-    rows = db.get_influencers(
-        search=search or None,
-        niches=niche_filter or None,
-        relationships=rel_filter or None,
-    )
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-    total = len(rows)
+    # Load influencers
+    f = st.session_state.im_filter
+    status_param = None if f == "All" else f.lower()
+    rows = db.get_influencers(status=status_param)
+
+    if not rows:
+        msg = (
+            "Your watchlist is empty. Add influencers to start monitoring their posts."
+            if f == "All"
+            else f"No {f.lower()} influencers."
+        )
+        st.markdown(f"<div class='empty-state'>{msg}</div>", unsafe_allow_html=True)
+        return
+
+    # Table header
     st.markdown(
-        f"<div style='color:#9AA0B2;font-size:0.82rem;margin-bottom:16px;'>"
-        f"{total} influencer{'s' if total != 1 else ''} found</div>",
+        "<div style='display:flex;padding:6px 14px;border-bottom:2px solid #374151;"
+        "font-size:0.72rem;color:#6B7280;text-transform:uppercase;letter-spacing:0.06em;gap:12px;'>"
+        "<span style='flex:2;'>Name</span>"
+        "<span style='flex:2;'>Handle</span>"
+        "<span style='flex:1;'>Niche</span>"
+        "<span style='flex:1;'>Status</span>"
+        "<span style='flex:1;'>&nbsp;</span>"
+        "</div>",
         unsafe_allow_html=True,
     )
 
-    if not rows:
-        st.markdown('<div class="empty-state">No influencers match your filters.</div>', unsafe_allow_html=True)
+    for row in rows:
+        row_id = row["id"]
+        name   = row["name"]
+        handle = row.get("linkedin_handle") or row.get("handle") or ""
+        url    = f"https://www.linkedin.com/in/{handle}/" if handle else "#"
+        niche  = row.get("niche") or ""
+        status = row.get("status") or "active"
+
+        # Check if this row is pending remove confirmation
+        if st.session_state.im_remove_confirm == row_id:
+            st.warning(
+                f"Remove **{name}** from watchlist? The comment agent will stop monitoring their posts."
+            )
+            conf_col, cancel_col, _ = st.columns([1, 1, 4])
+            with conf_col:
+                if st.button("Confirm Remove", key=f"im_confirm_{row_id}", type="primary"):
+                    db.delete_influencer(row_id)
+                    st.session_state.im_remove_confirm = None
+                    st.toast(f"Removed {name}", icon="🗑️")
+                    st.rerun()
+            with cancel_col:
+                if st.button("Cancel", key=f"im_cancelrem_{row_id}"):
+                    st.session_state.im_remove_confirm = None
+                    st.rerun()
+            continue
+
+        col_name, col_handle, col_niche, col_status, col_actions = st.columns([2, 2, 1, 1, 1])
+        with col_name:
+            st.markdown(
+                f"<div style='font-size:0.88rem;font-weight:700;color:#FAFAFA;"
+                f"padding:6px 0;'>{name}</div>",
+                unsafe_allow_html=True,
+            )
+        with col_handle:
+            st.markdown(
+                f"<div style='padding:6px 0;font-size:0.82rem;'>"
+                f"<a href='{url}' target='_blank' style='color:#0A66C2;text-decoration:none;'>"
+                f"@{handle or '—'}</a></div>",
+                unsafe_allow_html=True,
+            )
+        with col_niche:
+            st.markdown(
+                f"<div style='padding:6px 0;'>{_niche_pill(niche)}</div>",
+                unsafe_allow_html=True,
+            )
+        with col_status:
+            st.markdown(
+                f"<div style='padding:6px 0;'>{_status_pill(status)}</div>",
+                unsafe_allow_html=True,
+            )
+        with col_actions:
+            btn_a, btn_b = st.columns(2)
+            with btn_a:
+                if status == "active":
+                    if st.button("💤", key=f"im_hib_{row_id}", help="Hibernate", use_container_width=True):
+                        db.hibernate_influencer(row_id)
+                        st.toast(f"{name} hibernated")
+                        st.rerun()
+                else:
+                    if st.button("▶", key=f"im_act_{row_id}", help="Activate", use_container_width=True):
+                        db.activate_influencer(row_id)
+                        st.toast(f"{name} activated")
+                        st.rerun()
+            with btn_b:
+                if st.button("✕", key=f"im_rem_{row_id}", help="Remove", use_container_width=True):
+                    st.session_state.im_remove_confirm = row_id
+                    st.rerun()
+
+
+# ── Discover tab ──────────────────────────────────────────────────────────────
+
+def _render_discover() -> None:
+    st.markdown(
+        "<div class='section-header'>Discover</div>"
+        "<div style='font-size:0.82rem;color:#6B7280;margin-top:-6px;margin-bottom:14px;'>"
+        "AI-powered recommendations based on your network and focus areas.</div>",
+        unsafe_allow_html=True,
+    )
+
+    # Pattern card (only after 10+ signals)
+    pattern_data = db.get_discover_pattern()
+    pattern_text = pattern_data.get("pattern")
+    signal_count = pattern_data.get("signal_count", 0)
+    if pattern_text:
+        st.markdown(
+            f"<div class='pattern-card'>"
+            f"<strong>Based on your choices:</strong> {pattern_text}"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
+    # Load suggestions
+    suggestions = db.get_discover_suggestions()
+
+    if not suggestions:
+        st.markdown(
+            "<div class='empty-state'>Generating suggestions…</div>",
+            unsafe_allow_html=True,
+        )
+        with st.spinner("Calling Claude…"):
+            db.trigger_discover_generate()
+        st.rerun()
         return
 
-    COLS = 3
-    rel_options = _ALL_RELATIONSHIPS_FULL
-    for row_start in range(0, len(rows), COLS):
-        chunk = rows[row_start: row_start + COLS]
-        cols  = st.columns(COLS)
+    for s in suggestions:
+        sid     = s["id"]
+        name    = s.get("name") or "Unknown"
+        handle  = s.get("linkedin_handle") or ""
+        headline = s.get("headline") or ""
+        niche   = s.get("niche") or ""
+        reason  = s.get("reason") or ""
 
-        for col, row in zip(cols, chunk):
-            row_id   = row["id"]
-            name     = row["name"]
-            handle   = row.get("handle") or ""
-            url      = row.get("linkedin_url") or (f"https://www.linkedin.com/in/{handle}/" if handle else "#")
-            niche    = row.get("niche") or "—"
-            rel      = row.get("relationship") or "Cold"
-            followers = row.get("follower_count") or 0
-            last     = row.get("last_interacted")
-            last_str = last[:10] if last else "Never"
+        st.markdown(
+            f"<div class='discover-card'>"
+            f"<div class='discover-name'>{name}</div>"
+            f"<div class='discover-headline'>{headline}</div>"
+            f"{_niche_pill(niche)}"
+            f"<div class='discover-reason' style='margin-top:8px;'>{reason}</div>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+        btn_l, btn_r, _ = st.columns([1, 1, 4])
+        with btn_l:
+            if st.button(
+                "🔗 Connect",
+                key=f"disc_accept_{sid}",
+                type="primary",
+                use_container_width=True,
+                help="Adds to your connection queue",
+            ):
+                db.accept_discover_suggestion(sid)
+                st.toast(f"Added {name} to connection queue")
+                st.rerun()
+        with btn_r:
+            if st.button(
+                "Not for me",
+                key=f"disc_dismiss_{sid}",
+                use_container_width=True,
+            ):
+                db.dismiss_discover_suggestion(sid)
+                st.rerun()
 
-            with col:
-                st.markdown(
-                    f"""
-                    <div class="inf-card">
-                        <div class="inf-card-name">{name}</div>
-                        <div class="inf-card-handle">
-                            <a href="{url}" target="_blank" style="color:#0A66C2;text-decoration:none;">
-                                @{handle or '—'}
-                            </a>
-                        </div>
-                        {_niche_pill(niche)} {_rel_pill(rel)}
-                        <div class="inf-card-meta">
-                            👥 {_fmt_followers(followers)} followers<br>
-                            🕐 Last: {last_str}
-                        </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 
-                cur_idx = rel_options.index(rel) if rel in rel_options else 0
-                new_rel = st.selectbox(
-                    "Stage",
-                    rel_options,
-                    index=cur_idx,
-                    key=f"inf_rel_{row_id}",
-                    label_visibility="collapsed",
-                )
-                btn_a, btn_b = st.columns(2)
-                with btn_a:
-                    if st.button("💾", key=f"inf_save_{row_id}", help="Save relationship", use_container_width=True):
-                        db.update_influencer_relationship(row_id, new_rel)
-                        st.toast(f"✅ {name} → {new_rel}")
-                        st.rerun()
-                with btn_b:
-                    if st.button("📌", key=f"inf_log_{row_id}", help="Log interaction", use_container_width=True):
-                        db.log_influencer_interaction(row_id)
-                        st.toast(f"📌 Interaction logged for {name}")
-                        st.rerun()
+    # Refresh button
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    if st.button("🔄 Refresh Suggestions", key="disc_refresh"):
+        with st.spinner("Generating new suggestions…"):
+            db.trigger_discover_generate()
+        st.toast("New suggestions generating…")
+        st.rerun()
 
-                st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+
+# ── Main render ───────────────────────────────────────────────────────────────
+
+def render() -> None:
+    st.markdown(_CSS, unsafe_allow_html=True)
+    _init_im_states()
+
+    st.markdown(
+        "<div style='font-size:1.3rem;font-weight:800;color:#FAFAFA;margin-bottom:4px;'>"
+        "Influencer Manager</div>"
+        "<div style='font-size:0.83rem;color:#6B7280;margin-bottom:16px;'>"
+        "Track and grow your network of financial crime thought leaders.</div>",
+        unsafe_allow_html=True,
+    )
+
+    # Tab navigation
+    tab_l, tab_r, _ = st.columns([1, 1, 4])
+    with tab_l:
+        if st.button(
+            "📋  Watchlist",
+            key="im_tab_watchlist",
+            type="primary" if st.session_state.im_tab == 0 else "secondary",
+            use_container_width=True,
+        ):
+            st.session_state.im_tab = 0
+            st.rerun()
+    with tab_r:
+        if st.button(
+            "✨  Discover",
+            key="im_tab_discover",
+            type="primary" if st.session_state.im_tab == 1 else "secondary",
+            use_container_width=True,
+        ):
+            st.session_state.im_tab = 1
+            st.rerun()
+
+    st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+
+    if st.session_state.im_tab == 0:
+        _render_watchlist()
+    else:
+        _render_discover()
