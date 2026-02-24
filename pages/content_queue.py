@@ -285,11 +285,22 @@ def _render_cards(rows: list[dict], api_url: str) -> None:
             opt1, opt2 = st.columns(2)
             with opt1:
                 if st.button("📤 Post Now", key=f"cq_postnow_{row_id}", use_container_width=True):
-                    _api("post", f"/posts/{row_id}/publish", api_url)
-                    db.update_content_status(row_id, "scheduled")
-                    st.session_state[f"cq_approving_{row_id}"] = False
-                    st.toast("✅ Post queued for publishing")
-                    st.rerun()
+                    if not st.session_state.get("linkedin_access_token"):
+                        st.warning("⚠️ Connect LinkedIn to post directly. Use 'Save as Draft' to save for manual posting.")
+                    else:
+                        try:
+                            r    = _requests.post(f"{api_url}/posts/{row_id}/publish", timeout=15)
+                            data = r.json()
+                            if data.get("ok"):
+                                db.update_content_status(row_id, "posted")
+                                st.session_state[f"cq_approving_{row_id}"] = False
+                                li_id = data.get("linkedin_post_id", "")
+                                st.toast(f"✅ Posted to LinkedIn!{' ID: ' + li_id if li_id else ''}")
+                                st.rerun()
+                            else:
+                                st.toast(f"⚠️ {data.get('error', 'Publish failed')}")
+                        except Exception as e:
+                            st.toast(f"⚠️ Error: {e}")
             with opt2:
                 if st.button("📝 Save as Draft", key=f"cq_savedraft_{row_id}", use_container_width=True):
                     _api("post", f"/posts/{row_id}/draft", api_url)

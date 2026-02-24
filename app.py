@@ -143,8 +143,35 @@ if "linkedin_access_token" not in st.session_state:
     st.session_state.linkedin_profile_title = None
     st.session_state.linkedin_profile_picture_url = None
 
+if "linkedin_profile_checked" not in st.session_state:
+    st.session_state.linkedin_profile_checked = False
+
 # ── Init DB ────────────────────────────────────────────────────────────────────
 db.ensure_tables()
+
+# ── LinkedIn session restore ────────────────────────────────────────────────────
+if not st.session_state.linkedin_profile_checked:
+    qp = st.query_params
+    if qp.get("linkedin_connected") == "true":
+        # Redirect from OAuth callback — populate session from query params
+        st.session_state.linkedin_access_token       = "connected"
+        st.session_state.linkedin_profile_name       = qp.get("name", "")
+        st.session_state.linkedin_profile_title      = qp.get("email", "")
+        st.session_state.linkedin_profile_picture_url = qp.get("picture", "")
+        st.session_state.linkedin_profile_checked    = True
+        st.query_params.clear()
+        st.rerun()
+    elif not st.session_state.linkedin_access_token:
+        # Try to restore from persisted token in backend DB
+        _profile = db.get_linkedin_profile()
+        if _profile.get("connected"):
+            st.session_state.linkedin_access_token       = "connected"
+            st.session_state.linkedin_profile_name       = _profile.get("name", "")
+            st.session_state.linkedin_profile_title      = (
+                _profile.get("headline") or _profile.get("email", "")
+            )
+            st.session_state.linkedin_profile_picture_url = _profile.get("picture_url", "")
+        st.session_state.linkedin_profile_checked = True
 
 # ── Header ─────────────────────────────────────────────────────────────────────
 header_left, header_right = st.columns([3, 1])
@@ -156,7 +183,7 @@ with header_left:
             <span style="font-size:1.5rem;font-weight:800;color:#FAFAFA;">📊 FinSignal</span>
         </div>
         <div style="font-size:0.83rem;color:#6B7280;">
-            LinkedIn Content Intelligence for Financial Crime Compliance
+            Empowering your voice with autonomous intelligence
         </div>
         """,
         unsafe_allow_html=True,
@@ -164,8 +191,8 @@ with header_left:
 
 with header_right:
     if st.session_state.linkedin_access_token:
-        pic = st.session_state.linkedin_profile_picture_url or ""
-        name = st.session_state.linkedin_profile_name or "Connected"
+        pic   = st.session_state.linkedin_profile_picture_url or ""
+        name  = st.session_state.linkedin_profile_name or "Connected"
         title = st.session_state.linkedin_profile_title or "LinkedIn"
         if pic:
             st.markdown(
@@ -195,6 +222,15 @@ with header_right:
                 """,
                 unsafe_allow_html=True,
             )
+        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+        if st.button("🔌 Disconnect LinkedIn", key="btn_logout", use_container_width=True):
+            db.linkedin_logout()
+            st.session_state.linkedin_access_token        = None
+            st.session_state.linkedin_profile_name        = None
+            st.session_state.linkedin_profile_title       = None
+            st.session_state.linkedin_profile_picture_url = None
+            st.session_state.linkedin_profile_checked     = False
+            st.rerun()
     else:
         st.markdown(
             f"""

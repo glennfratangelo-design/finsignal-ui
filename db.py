@@ -240,6 +240,20 @@ def get_strategy_health() -> dict:
 
 # ── Analytics ─────────────────────────────────────────────────────────────────
 
+# ── LinkedIn OAuth ─────────────────────────────────────────────────────────────
+
+def get_linkedin_profile() -> dict:
+    result = _get("/auth/linkedin/profile")
+    if not isinstance(result, dict):
+        return {"connected": False}
+    return result
+
+
+def linkedin_logout() -> bool:
+    result = _get("/auth/linkedin/logout")
+    return isinstance(result, dict) and result.get("success", False)
+
+
 def score_post(text: str) -> dict:
     result = _post("/analytics/score-post", {"text": text})
     if not isinstance(result, dict):
