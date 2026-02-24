@@ -176,6 +176,11 @@ _CSS = """
 
 def _init_states() -> None:
     defaults = {
+        # Voice Profile co-pilot state
+        "sm_voice_chat_active": False,
+        "sm_voice_conv_id":     None,
+        "sm_voice_messages":    [],
+        "sm_voice_draft":       None,
         # Topic co-pilot state
         "sm_topic_chat_active": False,
         "sm_topic_conv_id":     None,
@@ -206,6 +211,268 @@ def _render_chat_messages(messages: list) -> None:
             html.append(f"<div class='chat-row-asst'><div class='bubble-asst'>{text}</div></div>")
     html.append("</div>")
     st.markdown("".join(html), unsafe_allow_html=True)
+
+
+# ── Voice co-pilot UI ─────────────────────────────────────────────────────────
+
+def _render_voice_copilot() -> None:
+    st.markdown(
+        "<div style='font-size:0.95rem;font-weight:700;color:#FAFAFA;margin-bottom:10px;'>"
+        "Voice Setup Co-Pilot</div>",
+        unsafe_allow_html=True,
+    )
+
+    messages = st.session_state.sm_voice_messages
+    _render_chat_messages(messages)
+
+    draft = st.session_state.sm_voice_draft
+    if draft:
+        st.success("Voice profile ready — review and confirm below.")
+        tone_raw = draft.get("tone_descriptors", [])
+        if isinstance(tone_raw, list):
+            tone_pills = "".join(f"<span class='topic-tag'>{t}</span>&nbsp;" for t in tone_raw)
+        else:
+            tone_pills = f"<span class='topic-tag'>{tone_raw}</span>"
+        st.markdown(
+            f"<div class='icp-card' style='margin-bottom:12px;'>"
+            f"<div class='icp-label'>Tone</div><div style='margin:4px 0;'>{tone_pills}</div>"
+            f"<div class='icp-label'>Opens With</div>"
+            f"<div class='icp-value'>{draft.get('opening_patterns', '')}</div>"
+            f"<div class='icp-label'>Closes With</div>"
+            f"<div class='icp-value'>{draft.get('closing_patterns', '')}</div>"
+            f"<div class='icp-label'>Contrarian Level</div>"
+            f"<div class='icp-value'>{draft.get('contrarian_level', 'medium')}</div>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+        col1, col2, col3 = st.columns([2, 2, 1])
+        with col1:
+            if st.button("Confirm & Save Voice", key="sm_voice_confirm", type="primary"):
+                conv_id = st.session_state.sm_voice_conv_id
+                result  = db.confirm_voice_copilot(conv_id)
+                if result.get("ok"):
+                    st.toast("Voice profile saved — all posts will now sound like you.", icon="✅")
+                    st.session_state.sm_voice_chat_active = False
+                    st.session_state.sm_voice_messages    = []
+                    st.session_state.sm_voice_draft       = None
+                    st.session_state.sm_voice_conv_id     = None
+                    st.rerun()
+                else:
+                    st.error(f"Save failed: {result.get('error', 'unknown error')}")
+        with col2:
+            if st.button("Start Over", key="sm_voice_restart"):
+                st.session_state.sm_voice_messages = []
+                st.session_state.sm_voice_draft    = None
+                st.session_state.sm_voice_conv_id  = None
+                st.rerun()
+        with col3:
+            if st.button("Cancel", key="sm_voice_cancel_draft"):
+                st.session_state.sm_voice_chat_active = False
+                st.session_state.sm_voice_messages    = []
+                st.session_state.sm_voice_draft       = None
+                st.session_state.sm_voice_conv_id     = None
+                st.rerun()
+        return
+
+    input_col, btn_col = st.columns([5, 1])
+    with input_col:
+        user_input = st.text_input(
+            "", key="sm_voice_input",
+            placeholder="Share a post you wrote that felt most like you…",
+            label_visibility="collapsed",
+        )
+    with btn_col:
+        send = st.button("Send", key="sm_voice_send", use_container_width=True)
+
+    cancel_col, _ = st.columns([1, 5])
+    with cancel_col:
+        if st.button("Cancel", key="sm_voice_cancel", use_container_width=True):
+            st.session_state.sm_voice_chat_active = False
+            st.session_state.sm_voice_messages    = []
+            st.session_state.sm_voice_draft       = None
+            st.session_state.sm_voice_conv_id     = None
+            st.rerun()
+
+    if send and user_input:
+        with st.spinner("Thinking…"):
+            conv_id = st.session_state.sm_voice_conv_id
+            if conv_id is None:
+                result = db.start_voice_copilot(user_input)
+                if result.get("conversation_id"):
+                    st.session_state.sm_voice_conv_id = result["conversation_id"]
+            else:
+                result = db.message_voice_copilot(conv_id, user_input)
+
+        if "error" in result and not result.get("assistant_message"):
+            st.error(f"Co-pilot error: {result['error']}")
+            return
+
+        msgs = st.session_state.sm_voice_messages
+        msgs.append({"role": "user",      "content": user_input})
+        msgs.append({"role": "assistant", "content": result.get("assistant_message", "")})
+        st.session_state.sm_voice_messages = msgs
+
+        if result.get("is_complete"):
+            st.session_state.sm_voice_draft = result.get("voice_draft")
+
+        st.rerun()
+
+
+# ── Voice Profile section ─────────────────────────────────────────────────────
+
+def _render_voice_section() -> None:
+    header_col, btn_col = st.columns([3, 1])
+    with header_col:
+        st.markdown(
+            "<div class='section-header'>Your Voice</div>", unsafe_allow_html=True
+        )
+        st.markdown(
+            "<div style='font-size:0.82rem;color:#6B7280;margin-top:-8px;margin-bottom:12px;'>"
+            "How you sound to the world. Every post and comment reflects this.</div>",
+            unsafe_allow_html=True,
+        )
+
+    if st.session_state.sm_voice_chat_active:
+        _render_voice_copilot()
+        _render_voice_learning()
+        return
+
+    vp = db.get_voice_profile()
+    if not vp.get("exists") or vp.get("status") != "confirmed":
+        st.markdown(
+            "<div class='empty-state'>"
+            "Your agents are using the baseline voice.<br>"
+            "Define your authentic voice to make every post sound like you wrote it."
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+        if st.button("Start Voice Setup", key="sm_start_voice", type="primary"):
+            st.session_state.sm_voice_chat_active = True
+            st.session_state.sm_voice_messages    = []
+            st.session_state.sm_voice_draft       = None
+            st.session_state.sm_voice_conv_id     = None
+            st.rerun()
+        return
+
+    # Voice profile confirmed — show profile card
+    tone_raw = vp.get("tone_descriptors", [])
+    if isinstance(tone_raw, list):
+        tone_pills = "".join(f"<span class='topic-tag'>{t}</span>&nbsp;" for t in tone_raw)
+    elif tone_raw:
+        tone_pills = "".join(
+            f"<span class='topic-tag'>{t.strip()}</span>&nbsp;"
+            for t in str(tone_raw).split(",") if t.strip()
+        )
+    else:
+        tone_pills = "<span class='icp-value'>Not set</span>"
+
+    st.markdown(
+        f"<div class='icp-card'>"
+        f"<div class='icp-label'>Tone</div>"
+        f"<div style='margin:6px 0;'>{tone_pills}</div>"
+        f"<div class='icp-label'>Writing Patterns</div>"
+        f"<div class='icp-value' style='margin-top:4px;'>"
+        f"Opens with: {vp.get('opening_patterns', 'Not set')}<br>"
+        f"Closes with: {vp.get('closing_patterns', 'Not set')}"
+        f"</div>"
+        f"<div class='icp-label'>Settings</div>"
+        f"<div class='icp-value'>"
+        f"Contrarian: {vp.get('contrarian_level', 'medium')} &nbsp;|&nbsp; "
+        f"Humor: {vp.get('humor_level', 'dry')} &nbsp;|&nbsp; "
+        f"Personal disclosure: {vp.get('personal_disclosure', 'occasional')}"
+        f"</div>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+    edit_col, reset_col, _ = st.columns([1, 1, 4])
+    with edit_col:
+        if st.button("Edit Voice", key="sm_edit_voice", type="primary"):
+            tone_str = (
+                ", ".join(tone_raw) if isinstance(tone_raw, list) else str(tone_raw)
+            )
+            edit_msg = (
+                f"I want to refine my voice profile. My current tone is: {tone_str}. "
+                f"I typically open posts like: {vp.get('opening_patterns', '')}. "
+                "Please help me refine or update it."
+            )
+            st.session_state.sm_voice_chat_active    = True
+            st.session_state.sm_voice_messages       = []
+            st.session_state.sm_voice_draft          = None
+            st.session_state.sm_voice_conv_id        = None
+            st.session_state.sm_voice_edit_prefill   = edit_msg
+            st.rerun()
+    with reset_col:
+        if st.button("Reset Voice", key="sm_reset_voice"):
+            db.delete_voice_profile()
+            st.toast("Voice profile reset", icon="🗑️")
+            st.rerun()
+
+    # Handle edit prefill
+    if st.session_state.get("sm_voice_edit_prefill") and st.session_state.sm_voice_chat_active:
+        prefill = st.session_state.pop("sm_voice_edit_prefill")
+        with st.spinner("Loading voice profile for editing…"):
+            result = db.start_voice_copilot(prefill)
+        if result.get("conversation_id"):
+            st.session_state.sm_voice_conv_id  = result["conversation_id"]
+            st.session_state.sm_voice_messages = [
+                {"role": "user",      "content": prefill},
+                {"role": "assistant", "content": result.get("assistant_message", "")},
+            ]
+            if result.get("is_complete"):
+                st.session_state.sm_voice_draft = result.get("voice_draft")
+        st.rerun()
+
+    _render_voice_learning()
+
+
+def _render_voice_learning() -> None:
+    """Render the 'What I've Learned' section from edit analysis."""
+    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='section-header' style='font-size:0.9rem;'>What I've Learned</div>"
+        "<div style='font-size:0.78rem;color:#6B7280;margin-top:-6px;margin-bottom:10px;'>"
+        "Patterns detected from your edits — accept or reject each suggestion.</div>",
+        unsafe_allow_html=True,
+    )
+
+    history = db.get_voice_history()
+    pending = [h for h in history if h.get("source") == "edit_analysis" and h.get("accepted") == 0][:5]
+
+    if not pending:
+        st.markdown(
+            "<div style='font-size:0.83rem;color:#6B7280;font-style:italic;'>"
+            "No new patterns detected yet. Keep editing drafts to help me learn your voice.</div>",
+            unsafe_allow_html=True,
+        )
+        return
+
+    for item in pending:
+        item_id   = item["id"]
+        field     = item.get("field_changed", "").replace("_", " ").title()
+        new_val   = item.get("new_value", "")
+        created   = (item.get("created_at") or "")[:10]
+
+        st.markdown(
+            f"<div class='icp-card' style='padding:12px 16px;margin-bottom:8px;'>"
+            f"<div style='font-size:0.75rem;color:#9AA0B2;text-transform:uppercase;"
+            f"letter-spacing:0.06em;'>{field} &nbsp;·&nbsp; {created}</div>"
+            f"<div style='font-size:0.85rem;color:#FAFAFA;margin-top:4px;'>{new_val}</div>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+        acc_col, rej_col, _ = st.columns([1, 1, 5])
+        with acc_col:
+            if st.button("✓ Accept", key=f"sm_vacc_{item_id}", use_container_width=True, type="primary"):
+                db.accept_voice_change(item_id)
+                st.toast("Change applied to voice profile", icon="✅")
+                st.rerun()
+        with rej_col:
+            if st.button("✕ Reject", key=f"sm_vrej_{item_id}", use_container_width=True):
+                db.reject_voice_change(item_id)
+                st.rerun()
 
 
 # ── Topic co-pilot UI ─────────────────────────────────────────────────────────
@@ -636,14 +903,21 @@ def render() -> None:
         unsafe_allow_html=True,
     )
 
-    # ── Section 1: Topic Intelligence ──────────────────────────────────────────
+    # ── Section 1: Voice Profile ────────────────────────────────────────────────
+    _render_voice_section()
+
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+    st.markdown("<hr style='border-color:#2D3748;'/>", unsafe_allow_html=True)
+    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+
+    # ── Section 2: Topic Intelligence ──────────────────────────────────────────
     _render_topic_intelligence()
 
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
     st.markdown("<hr style='border-color:#2D3748;'/>", unsafe_allow_html=True)
     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
-    # ── Section 2: ICP ─────────────────────────────────────────────────────────
+    # ── Section 3: ICP ─────────────────────────────────────────────────────────
     _render_icp_section()
 
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
@@ -653,7 +927,7 @@ def render() -> None:
     cfg    = db.get_strategy()
     health = db.get_strategy_health()
 
-    # ── Section 3: Strategy Health ─────────────────────────────────────────────
+    # ── Section 4: Strategy Health ─────────────────────────────────────────────
     st.markdown("<div class='section-header'>Strategy Health</div>", unsafe_allow_html=True)
 
     c1, c2, c3, c4 = st.columns(4)

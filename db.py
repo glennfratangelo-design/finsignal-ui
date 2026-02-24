@@ -329,3 +329,46 @@ def message_icp_copilot(conv_id: int, user_message: str) -> dict:
 def confirm_icp_copilot(conv_id: int) -> dict:
     result = _post(f"/icp/copilot/{conv_id}/confirm", timeout=_COPILOT_TIMEOUT)
     return result if isinstance(result, dict) else {"ok": False}
+
+
+# ── Voice Profile ───────────────────────────────────────────────────────────────
+
+def get_voice_profile() -> dict:
+    result = _get("/voice-profile")
+    return result if isinstance(result, dict) else {"exists": False}
+
+
+def delete_voice_profile() -> dict:
+    return _delete("/voice-profile")
+
+
+def get_voice_history() -> list[dict]:
+    result = _get("/voice-profile/history")
+    return result if isinstance(result, list) else []
+
+
+def accept_voice_change(row_id: int) -> dict:
+    return _put(f"/voice-profile/history/{row_id}/accept")
+
+
+def reject_voice_change(row_id: int) -> dict:
+    return _put(f"/voice-profile/history/{row_id}/reject")
+
+
+def start_voice_copilot(user_message: str) -> dict:
+    result = _post("/voice-profile/copilot/start", {"user_message": user_message}, timeout=_COPILOT_TIMEOUT)
+    return result if isinstance(result, dict) else {"ok": False}
+
+
+def message_voice_copilot(conv_id: int, user_message: str) -> dict:
+    result = _post(f"/voice-profile/copilot/{conv_id}/message", {"user_message": user_message}, timeout=_COPILOT_TIMEOUT)
+    return result if isinstance(result, dict) else {"ok": False}
+
+
+def confirm_voice_copilot(conv_id: int) -> dict:
+    result = _post(f"/voice-profile/copilot/{conv_id}/confirm", timeout=_COPILOT_TIMEOUT)
+    return result if isinstance(result, dict) else {"ok": False}
+
+
+def trigger_analyze_edits() -> dict:
+    return _post("/voice-profile/analyze-edits")
