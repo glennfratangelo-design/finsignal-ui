@@ -225,18 +225,20 @@ def _render_watchlist() -> None:
         "<span style='flex:2;'>Handle</span>"
         "<span style='flex:1;'>Niche</span>"
         "<span style='flex:1;'>Status</span>"
+        "<span style='flex:1;'>Comments</span>"
         "<span style='flex:1;'>&nbsp;</span>"
         "</div>",
         unsafe_allow_html=True,
     )
 
     for row in rows:
-        row_id = row["id"]
-        name   = row["name"]
-        handle = row.get("linkedin_handle") or row.get("handle") or ""
-        url    = f"https://www.linkedin.com/in/{handle}/" if handle else "#"
-        niche  = row.get("niche") or ""
-        status = row.get("status") or "active"
+        row_id         = row["id"]
+        name           = row["name"]
+        handle         = row.get("linkedin_handle") or row.get("handle") or ""
+        url            = f"https://www.linkedin.com/in/{handle}/" if handle else "#"
+        niche          = row.get("niche") or ""
+        status         = row.get("status") or "active"
+        comments_posted = int(row.get("comments_posted") or 0)
 
         # Check if this row is pending remove confirmation
         if st.session_state.im_remove_confirm == row_id:
@@ -256,7 +258,7 @@ def _render_watchlist() -> None:
                     st.rerun()
             continue
 
-        col_name, col_handle, col_niche, col_status, col_actions = st.columns([2, 2, 1, 1, 1])
+        col_name, col_handle, col_niche, col_status, col_comments, col_actions = st.columns([2, 2, 1, 1, 1, 1])
         with col_name:
             st.markdown(
                 f"<div style='font-size:0.88rem;font-weight:700;color:#FAFAFA;"
@@ -278,6 +280,14 @@ def _render_watchlist() -> None:
         with col_status:
             st.markdown(
                 f"<div style='padding:6px 0;'>{_status_pill(status)}</div>",
+                unsafe_allow_html=True,
+            )
+        with col_comments:
+            st.markdown(
+                f"<div style='padding:6px 0;'>"
+                f"<span style='background:#2D3748;color:#9AA0B2;padding:2px 8px;"
+                f"border-radius:10px;font-size:0.72rem;'>{comments_posted} comments</span>"
+                f"</div>",
                 unsafe_allow_html=True,
             )
         with col_actions:

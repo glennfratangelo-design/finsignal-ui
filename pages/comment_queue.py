@@ -20,7 +20,7 @@ _CSS = """
     display: flex;
     align-items: center;
     gap: 10px;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
 }
 .inf-avatar {
     width: 38px;
@@ -39,10 +39,6 @@ _CSS = """
     font-size: 0.9rem;
     font-weight: 700;
     color: #FAFAFA;
-}
-.inf-post-link {
-    font-size: 0.73rem;
-    color: #0A66C2;
 }
 .post-snippet {
     background: #0F1117;
@@ -64,7 +60,7 @@ _CSS = """
     color: #D0D4E0;
     line-height: 1.55;
     white-space: pre-wrap;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
 }
 .group-label {
     font-size: 0.78rem;
@@ -74,18 +70,13 @@ _CSS = """
     letter-spacing: 0.07em;
     margin: 20px 0 10px;
 }
-.approve-panel {
-    background: #111320;
-    border: 1px solid #2D3748;
-    border-radius: 8px;
-    padding: 12px 14px;
-    margin-bottom: 8px;
-}
-.approve-panel-title {
-    font-size: 0.80rem;
-    color: #9AA0B2;
-    margin-bottom: 8px;
-    font-weight: 600;
+.posted-row {
+    display: flex;
+    align-items: center;
+    padding: 9px 0;
+    border-bottom: 1px solid #2D3748;
+    gap: 12px;
+    font-size: 0.85rem;
 }
 .empty-state {
     text-align: center;
@@ -114,25 +105,22 @@ def _initials(name: str) -> str:
     return name[:2].upper()
 
 
-def _api(method: str, path: str, api_url: str) -> bool:
+def _api(method: str, path: str, api_url: str) -> tuple[bool, dict]:
     try:
-        r = getattr(_requests, method)(f"{api_url}{path}", timeout=5)
-        return r.status_code < 300
-    except Exception:
-        return False
+        r = getattr(_requests, method)(f"{api_url}{path}", timeout=10)
+        try:
+            data = r.json()
+        except Exception:
+            data = {}
+        return r.status_code < 300, data
+    except Exception as e:
+        return False, {"error": str(e)}
 
 
-def _render_cards(rows: list[dict], api_url: str) -> None:
-    st.markdown(_CSS, unsafe_allow_html=True)
-
+def _render_pending_cards(rows: list[dict], api_url: str) -> None:
     if not rows:
         st.markdown(
-            """
-            <div class="empty-state">
-                <div class="empty-icon">✨</div>
-                Comment inbox is clear
-            </div>
-            """,
+            '<div class="empty-state"><div class="empty-icon">✅</div>No pending comments</div>',
             unsafe_allow_html=True,
         )
         return
@@ -154,11 +142,11 @@ def _render_cards(rows: list[dict], api_url: str) -> None:
         )
 
         for row in group_rows:
-            row_id = row["id"]
-            post_url = row.get("post_url") or ""
-            snippet = row.get("post_snippet") or ""
+            row_id       = row["id"]
+            post_url     = row.get("post_url") or ""
+            snippet      = row.get("post_snippet") or ""
             comment_text = row.get("comment_text") or ""
-            created = row.get("created_at", "")[:16]
+            created      = row.get("created_at", "")[:16]
 
             snippet_html = (
                 f'<div class="post-snippet">"{snippet[:300]}{"…" if len(snippet) > 300 else ""}"</div>'
@@ -166,7 +154,19 @@ def _render_cards(rows: list[dict], api_url: str) -> None:
                 else ""
             )
 
-            short_url = post_url.replace("https://www.", "").replace("https://", "")[:60] + ("…" if len(post_url) > 60 else "")
+            # Build the "View original post" link
+            if post_url:
+                post_link_html = (
+                    f'<div style="margin-bottom:8px;">'
+                    f'<a href="{post_url}" target="_blank" '
+                    f'style="font-size:0.78rem;color:#0A66C2;text-decoration:none;">'
+                    f'View original post →</a></div>'
+                )
+            else:
+                post_link_html = (
+                    '<div style="margin-bottom:8px;font-size:0.78rem;color:#4B5563;">'
+                    'Post URL unavailable</div>'
+                )
 
             st.markdown(
                 f"""
@@ -175,36 +175,34 @@ def _render_cards(rows: list[dict], api_url: str) -> None:
                         <div class="inf-avatar">{inits}</div>
                         <div>
                             <div class="inf-name">{inf_name}</div>
-                            <div class="inf-post-link">
-                                <a href="{post_url}" target="_blank" style="color:#0A66C2;">{short_url}</a>
-                            </div>
+                            <div style="font-size:0.72rem;color:#6B7280;">Drafted {created}</div>
                         </div>
                     </div>
+                    {post_link_html}
                     {snippet_html}
                     <div class="reply-box">{comment_text}</div>
-                    <div style="font-size:0.72rem;color:#6B7280;">Drafted {created}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
 
-            showing_approve = st.session_state.get(f"cm_approving_{row_id}", False)
-
-            btn1, btn2, btn3, btn_spacer = st.columns([1.3, 1, 1, 4])
+            btn1, btn2, btn3, _spacer = st.columns([1.3, 1, 1, 4])
 
             with btn1:
-                if not showing_approve:
-                    if st.button("✅ Approve & Post", key=f"cm_approve_{row_id}"):
-                        st.session_state[f"cm_approving_{row_id}"] = True
+                if st.button("✅ Approve & Post", key=f"cm_approve_{row_id}", type="primary"):
+                    ok, resp = _api("post", f"/comments/{row_id}/approve", api_url)
+                    if ok:
+                        st.toast("✅ Comment posted to LinkedIn")
                         st.rerun()
-                else:
-                    if st.button("✕ Cancel", key=f"cm_cancel_{row_id}"):
-                        st.session_state[f"cm_approving_{row_id}"] = False
-                        st.rerun()
+                    else:
+                        err = resp.get("error", "Unknown error")
+                        st.error(f"Failed to post: {err}")
 
             with btn2:
                 if st.button("✏️ Edit Reply", key=f"cm_edit_{row_id}"):
-                    st.session_state[f"cm_editing_{row_id}"] = not st.session_state.get(f"cm_editing_{row_id}", False)
+                    st.session_state[f"cm_editing_{row_id}"] = not st.session_state.get(
+                        f"cm_editing_{row_id}", False
+                    )
                     st.rerun()
 
             with btn3:
@@ -212,27 +210,6 @@ def _render_cards(rows: list[dict], api_url: str) -> None:
                     _api("post", f"/comments/{row_id}/ignore", api_url)
                     db.update_comment_status(row_id, "ignored")
                     st.rerun()
-
-            # Approve options panel
-            if showing_approve:
-                st.markdown(
-                    '<div class="approve-panel"><div class="approve-panel-title">Choose action:</div></div>',
-                    unsafe_allow_html=True,
-                )
-                opt1, opt2 = st.columns(2)
-                with opt1:
-                    if st.button("💬 Post Comment Now", key=f"cm_postnow_{row_id}", use_container_width=True):
-                        _api("post", f"/comments/{row_id}/approve", api_url)
-                        db.update_comment_status(row_id, "posted")
-                        st.session_state[f"cm_approving_{row_id}"] = False
-                        st.toast("✅ Comment posted")
-                        st.rerun()
-                with opt2:
-                    if st.button("🗂️ Save for Later", key=f"cm_save_{row_id}", use_container_width=True):
-                        db.update_comment_status(row_id, "saved")
-                        st.session_state[f"cm_approving_{row_id}"] = False
-                        st.toast("🗂️ Saved for later")
-                        st.rerun()
 
             # Inline edit form
             if st.session_state.get(f"cm_editing_{row_id}"):
@@ -253,10 +230,81 @@ def _render_cards(rows: list[dict], api_url: str) -> None:
             st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 
 
+def _render_posted_rows(rows: list[dict]) -> None:
+    if not rows:
+        st.markdown(
+            '<div class="empty-state"><div class="empty-icon">📭</div>No posted comments yet</div>',
+            unsafe_allow_html=True,
+        )
+        return
+
+    # Table header
+    st.markdown(
+        "<div style='display:flex;padding:6px 0;border-bottom:2px solid #374151;"
+        "font-size:0.72rem;color:#6B7280;text-transform:uppercase;letter-spacing:0.06em;gap:12px;'>"
+        "<span style='flex:2;'>Influencer</span>"
+        "<span style='flex:4;'>Comment</span>"
+        "<span style='flex:1.5;'>Posted</span>"
+        "<span style='flex:1;'>Link</span>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+    for row in rows:
+        inf_name     = _extract_influencer_name(row.get("post_url", ""), row.get("influencer_name", ""))
+        comment_text = row.get("comment_text") or ""
+        post_url     = row.get("post_url") or ""
+        posted_at    = (row.get("posted_at") or row.get("created_at") or "")[:16]
+        truncated    = comment_text[:80] + ("…" if len(comment_text) > 80 else "")
+
+        link_html = (
+            f'<a href="{post_url}" target="_blank" '
+            f'style="color:#0A66C2;text-decoration:none;font-size:0.8rem;">View post →</a>'
+            if post_url
+            else '<span style="color:#4B5563;font-size:0.8rem;">—</span>'
+        )
+
+        st.markdown(
+            f"<div style='display:flex;align-items:center;padding:9px 0;"
+            f"border-bottom:1px solid #2D3748;gap:12px;'>"
+            f"<span style='flex:2;font-size:0.85rem;font-weight:700;color:#FAFAFA;'>{inf_name}</span>"
+            f"<span style='flex:4;font-size:0.83rem;color:#9AA0B2;'>{truncated}</span>"
+            f"<span style='flex:1.5;font-size:0.75rem;color:#6B7280;'>{posted_at}</span>"
+            f"<span style='flex:1;'>{link_html}</span>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
+
+def _render_ignored_rows(rows: list[dict]) -> None:
+    if not rows:
+        st.markdown(
+            '<div class="empty-state"><div class="empty-icon">🚫</div>No ignored comments</div>',
+            unsafe_allow_html=True,
+        )
+        return
+
+    for row in rows:
+        inf_name     = _extract_influencer_name(row.get("post_url", ""), row.get("influencer_name", ""))
+        comment_text = row.get("comment_text") or ""
+        created      = (row.get("created_at") or "")[:16]
+        truncated    = comment_text[:80] + ("…" if len(comment_text) > 80 else "")
+        st.markdown(
+            f"<div style='display:flex;align-items:center;padding:9px 0;"
+            f"border-bottom:1px solid #2D3748;gap:12px;color:#4B5563;'>"
+            f"<span style='flex:2;font-size:0.85rem;'>{inf_name}</span>"
+            f"<span style='flex:4;font-size:0.83rem;'>{truncated}</span>"
+            f"<span style='flex:1.5;font-size:0.75rem;'>{created}</span>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
+
 def render(api_url: str = "http://localhost:8000") -> None:
+    st.markdown(_CSS, unsafe_allow_html=True)
+
     all_rows = db.get_comment_queue()
-    pending  = [r for r in all_rows if r["status"] == "pending"]
-    saved    = [r for r in all_rows if r["status"] == "saved"]
+    pending  = [r for r in all_rows if r["status"] in ("pending", "pending_urn")]
     posted   = [r for r in all_rows if r["status"] == "posted"]
     ignored  = [r for r in all_rows if r["status"] == "ignored"]
 
@@ -265,22 +313,31 @@ def render(api_url: str = "http://localhost:8000") -> None:
         st.session_state.cm_filter = "pending"
 
     filters = [
-        ("pending", f"Pending ({len(pending)})"  if pending else "Pending",  pending),
-        ("saved",   f"Saved ({len(saved)})"       if saved   else "Saved",    saved),
-        ("posted",  f"Posted ({len(posted)})"     if posted  else "Posted",   posted),
-        ("ignored", f"Ignored ({len(ignored)})"   if ignored else "Ignored",  ignored),
+        ("pending", f"Pending ({len(pending)})" if pending else "Pending"),
+        ("posted",  f"Posted ({len(posted)})"   if posted  else "Posted"),
+        ("ignored", f"Ignored ({len(ignored)})" if ignored else "Ignored"),
     ]
 
-    chip_cols = st.columns(4)
-    for col, (filt, label, _rows) in zip(chip_cols, filters):
+    f1, f2, f3, _ = st.columns([1, 1, 1, 3])
+    for col, (filt, label) in zip([f1, f2, f3], filters):
         with col:
             is_active = st.session_state.cm_filter == filt
-            if st.button(label, key=f"cm_chip_{filt}", type="primary" if is_active else "secondary", use_container_width=True):
+            if st.button(
+                label,
+                key=f"cm_chip_{filt}",
+                type="primary" if is_active else "secondary",
+                use_container_width=True,
+            ):
                 st.session_state.cm_filter = filt
                 st.rerun()
 
     st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 
     active_filter = st.session_state.cm_filter
-    rows_to_show  = next((rows for filt, _, rows in filters if filt == active_filter), pending)
-    _render_cards(rows_to_show, api_url)
+
+    if active_filter == "pending":
+        _render_pending_cards(pending, api_url)
+    elif active_filter == "posted":
+        _render_posted_rows(posted)
+    elif active_filter == "ignored":
+        _render_ignored_rows(ignored)
