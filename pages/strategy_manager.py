@@ -168,6 +168,69 @@ _CSS = """
     color: #6B7280;
     font-size: 0.88rem;
 }
+
+/* ── Feed rows ── */
+.feed-list-header {
+    font-size: 0.72rem;
+    color: #6B7280;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    font-weight: 700;
+    padding: 4px 0;
+}
+.cat-pill {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 20px;
+    font-size: 0.67rem;
+    font-weight: 700;
+    color: #fff;
+}
+.add-form-panel {
+    background: #161825;
+    border: 1px solid #2D3748;
+    border-radius: 8px;
+    padding: 18px 20px;
+    margin-bottom: 20px;
+}
+
+/* ── Feed discover cards ── */
+.feed-disc-card {
+    background: #1E2130;
+    border: 1px solid #2D3748;
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+}
+.feed-disc-name {
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: #FAFAFA;
+    margin-bottom: 2px;
+}
+.feed-disc-url {
+    font-size: 0.75rem;
+    color: #0A66C2;
+    word-break: break-all;
+    margin-bottom: 6px;
+}
+.feed-disc-reason {
+    font-size: 0.82rem;
+    color: #CBD5E1;
+    font-style: italic;
+    margin-bottom: 8px;
+    line-height: 1.4;
+}
+.feed-pattern-card {
+    background: #1A2744;
+    border: 1px solid #2563EB;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    font-size: 0.85rem;
+    color: #93C5FD;
+    line-height: 1.5;
+}
 </style>
 """
 
@@ -192,6 +255,11 @@ def _init_states() -> None:
         "sm_icp_conv_id":       None,
         "sm_icp_messages":      [],
         "sm_icp_draft":         None,
+        # Feed sub-tab state
+        "sm_feed_tab":           0,     # 0=Feeds, 1=Discover
+        "sm_feed_adding":        False,
+        "sm_feed_editing":       None,
+        "sm_feed_delete_confirm": None,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -889,6 +957,338 @@ def _render_icp_section() -> None:
         st.rerun()
 
 
+# ── Feed section helpers ──────────────────────────────────────────────────────
+
+import re as _re
+
+_FEED_CATEGORIES = [
+    "AML", "KYC", "Fraud", "Sanctions", "RegTech",
+    "Regulatory", "Compliance", "Financial Crime", "Payments", "Other",
+]
+
+_FEED_CAT_COLORS = {
+    "AML":             "#0A66C2",
+    "KYC":             "#057642",
+    "Fraud":           "#CC1016",
+    "Sanctions":       "#E85D04",
+    "RegTech":         "#7B2D8B",
+    "Regulatory":      "#0891B2",
+    "Compliance":      "#6366F1",
+    "Financial Crime": "#DC2626",
+    "Payments":        "#0284C7",
+    "Other":           "#6B7280",
+}
+
+
+def _feed_cat_pill(category: str) -> str:
+    color = _FEED_CAT_COLORS.get(category, "#555")
+    return f'<span class="cat-pill" style="background:{color};">{category or "Other"}</span>'
+
+
+def _feed_truncate_url(url: str, n: int = 45) -> str:
+    return url[:n] + "…" if len(url) > n else url
+
+
+def _feed_valid_url(url: str) -> bool:
+    return bool(_re.match(r"https?://[^\s]+", url.strip()))
+
+
+def _render_feed_form_sm(key_prefix: str, defaults: dict, on_save, on_cancel) -> None:
+    st.markdown('<div class="add-form-panel">', unsafe_allow_html=True)
+    with st.form(key=f"sm_feed_form_{key_prefix}"):
+        fc1, fc2 = st.columns(2)
+        with fc1:
+            new_name = st.text_input("Feed Name *", value=defaults.get("name", ""))
+            new_url  = st.text_input(
+                "Feed URL *",
+                value=defaults.get("url", ""),
+                placeholder="https://example.com/feed/",
+            )
+            new_type = st.selectbox(
+                "Feed Type",
+                ["rss", "atom", "blog", "json"],
+                index=["rss", "atom", "blog", "json"].index(defaults.get("feed_type", "rss")),
+            )
+        with fc2:
+            new_category = st.selectbox(
+                "Category",
+                _FEED_CATEGORIES,
+                index=_FEED_CATEGORIES.index(defaults.get("category", "Other"))
+                if defaults.get("category") in _FEED_CATEGORIES
+                else 0,
+            )
+            new_priority = st.radio(
+                "Priority",
+                ["standard", "priority"],
+                index=0 if defaults.get("priority", "standard") == "standard" else 1,
+                horizontal=True,
+                format_func=lambda x: "⭐ Priority" if x == "priority" else "Standard",
+            )
+            new_active = st.checkbox(
+                "Active (fetched by agent)", value=bool(defaults.get("active", True))
+            )
+        sc, cc = st.columns(2)
+        with sc:
+            if st.form_submit_button("Save Feed", use_container_width=True):
+                if not new_name.strip():
+                    st.error("Feed name is required.")
+                elif not _feed_valid_url(new_url):
+                    st.error("Enter a valid URL starting with http:// or https://")
+                else:
+                    on_save({
+                        "name":      new_name.strip(),
+                        "url":       new_url.strip(),
+                        "feed_type": new_type,
+                        "priority":  new_priority,
+                        "category":  new_category,
+                        "active":    new_active,
+                    })
+                    st.rerun()
+        with cc:
+            if st.form_submit_button("Cancel", use_container_width=True):
+                on_cancel()
+                st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+def _render_feeds_tab() -> None:
+    """Feeds sub-tab: list view with add/edit/delete."""
+    # Header row
+    hdr_l, hdr_r = st.columns([4, 1])
+    with hdr_l:
+        all_f = db.get_feeds()
+        priority_f = [f for f in all_f if f.get("priority") == "priority"]
+        active_f   = [f for f in all_f if f.get("active")]
+        st.markdown(
+            f"<div style='font-size:0.78rem;color:#6B7280;margin-bottom:12px;'>"
+            f"{len(all_f)} feeds &nbsp;·&nbsp; {len(priority_f)} priority &nbsp;·&nbsp; {len(active_f)} active</div>",
+            unsafe_allow_html=True,
+        )
+    with hdr_r:
+        showing = st.session_state.sm_feed_adding
+        if st.button(
+            "✕ Cancel" if showing else "➕ Add Feed",
+            key="sm_feed_add_toggle",
+            type="secondary" if showing else "primary",
+            use_container_width=True,
+        ):
+            st.session_state.sm_feed_adding = not showing
+            st.session_state.sm_feed_editing = None
+            st.rerun()
+
+    # Add form
+    if st.session_state.sm_feed_adding:
+        _render_feed_form_sm(
+            key_prefix="new",
+            defaults={"feed_type": "rss", "priority": "standard", "category": "AML", "active": True},
+            on_save=lambda d: (
+                db.save_feed(d["name"], d["url"], d["feed_type"], d["priority"], d["category"], int(d["active"])),
+                st.session_state.update({"sm_feed_adding": False}),
+            ),
+            on_cancel=lambda: st.session_state.update({"sm_feed_adding": False}),
+        )
+
+    # Load feeds — priority first
+    all_feeds  = db.get_feeds()
+    pri_feeds  = [f for f in all_feeds if f.get("priority") == "priority"]
+    std_feeds  = [f for f in all_feeds if f.get("priority") != "priority"]
+    sorted_feeds = pri_feeds + std_feeds
+
+    if not sorted_feeds:
+        st.markdown(
+            "<div class='empty-state'>"
+            "No feeds added yet. Use the <strong>Discover</strong> tab to find relevant RSS feeds, "
+            "or add one manually above.<br/><br/>"
+            "<span style='font-size:0.78rem;color:#4B5563;'>"
+            "New users start with no feeds. Use the Discover tab to populate your feed list "
+            "based on your topics and industry.</span></div>",
+            unsafe_allow_html=True,
+        )
+        return
+
+    # List header
+    lh1, lh2, lh3, _, _, _, _ = st.columns([3.5, 1.2, 1.2, 0.6, 0.6, 0.6, 0.6])
+    for col, label in [(lh1, "Feed"), (lh2, "Category"), (lh3, "Last Fetched")]:
+        col.markdown(
+            f"<div class='feed-list-header'>{label}</div>",
+            unsafe_allow_html=True,
+        )
+    st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+
+    for feed in sorted_feeds:
+        row_id    = feed["id"]
+        name      = feed["name"]
+        url       = feed.get("url") or ""
+        category  = feed.get("category") or "Other"
+        priority  = feed.get("priority") or "standard"
+        feed_type = feed.get("feed_type") or "rss"
+        active    = int(feed.get("active", 1))
+        last_str  = (feed.get("last_fetched") or "")[:10] or "Never"
+
+        # Delete confirmation
+        if st.session_state.sm_feed_delete_confirm == row_id:
+            st.warning(f"Remove **{name}** from your research feeds?")
+            dc, cc2, _ = st.columns([1, 1, 4])
+            with dc:
+                if st.button("Confirm Remove", key=f"sm_feed_delconf_{row_id}", type="primary"):
+                    db.delete_feed(row_id)
+                    st.session_state.sm_feed_delete_confirm = None
+                    st.toast(f"Removed {name}", icon="🗑️")
+                    st.rerun()
+            with cc2:
+                if st.button("Cancel", key=f"sm_feed_delcancel_{row_id}"):
+                    st.session_state.sm_feed_delete_confirm = None
+                    st.rerun()
+            continue
+
+        c_info, c_cat, c_last, c_star, c_tog, c_edit, c_del = st.columns([3.5, 1.2, 1.2, 0.6, 0.6, 0.6, 0.6])
+        with c_info:
+            st.markdown(
+                f"<div style='padding:6px 0;'>"
+                f"<span style='font-size:0.88rem;font-weight:700;color:#FAFAFA;'>{name}</span>&nbsp;"
+                f"<a href='{url}' target='_blank' style='font-size:0.72rem;color:#0A66C2;'>"
+                f"{_feed_truncate_url(url, 40)}</a></div>",
+                unsafe_allow_html=True,
+            )
+        with c_cat:
+            st.markdown(
+                f"<div style='padding:8px 0;'>{_feed_cat_pill(category)}</div>",
+                unsafe_allow_html=True,
+            )
+        with c_last:
+            st.markdown(
+                f"<div style='padding:6px 0;font-size:0.72rem;color:#6B7280;'>{last_str}</div>",
+                unsafe_allow_html=True,
+            )
+        with c_star:
+            star = "⭐" if priority == "priority" else "☆"
+            if st.button(star, key=f"sm_feed_star_{row_id}", help="Toggle priority", use_container_width=True):
+                new_p = "standard" if priority == "priority" else "priority"
+                db.update_feed(row_id, name, url, feed_type, new_p, category, active)
+                st.rerun()
+        with c_tog:
+            if st.button(
+                "⏸" if active else "▶",
+                key=f"sm_feed_toggle_{row_id}",
+                help="Pause/Resume",
+                use_container_width=True,
+            ):
+                db.toggle_feed_active(row_id, 0 if active else 1)
+                st.rerun()
+        with c_edit:
+            if st.button("✏️", key=f"sm_feed_edit_{row_id}", help="Edit", use_container_width=True):
+                current = st.session_state.sm_feed_editing
+                st.session_state.sm_feed_editing = None if current == row_id else row_id
+                st.session_state.sm_feed_adding  = False
+                st.rerun()
+        with c_del:
+            if st.button("🗑️", key=f"sm_feed_del_{row_id}", help="Delete", use_container_width=True):
+                st.session_state.sm_feed_delete_confirm = row_id
+                st.rerun()
+
+    # Inline edit form
+    editing_id = st.session_state.sm_feed_editing
+    if editing_id:
+        editing_feed = next((f for f in sorted_feeds if f["id"] == editing_id), None)
+        if editing_feed:
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+            _render_feed_form_sm(
+                key_prefix=f"edit_{editing_id}",
+                defaults={
+                    "name":      editing_feed["name"],
+                    "url":       editing_feed.get("url", ""),
+                    "feed_type": editing_feed.get("feed_type", "rss"),
+                    "priority":  editing_feed.get("priority", "standard"),
+                    "category":  editing_feed.get("category", "Other"),
+                    "active":    bool(int(editing_feed.get("active", 1))),
+                },
+                on_save=lambda d: (
+                    db.update_feed(
+                        editing_id, d["name"], d["url"], d["feed_type"],
+                        d["priority"], d["category"], int(d["active"])
+                    ),
+                    st.session_state.update({"sm_feed_editing": None}),
+                ),
+                on_cancel=lambda: st.session_state.update({"sm_feed_editing": None}),
+            )
+
+
+def _render_feed_discover_tab() -> None:
+    """Discover sub-tab: AI feed suggestions."""
+    st.markdown(
+        "<div style='font-size:0.82rem;color:#6B7280;margin-bottom:14px;'>"
+        "AI-powered RSS feed recommendations based on your topics and industry.</div>",
+        unsafe_allow_html=True,
+    )
+
+    # Load suggestions
+    suggestions = db.get_feed_suggestions()
+
+    if not suggestions:
+        st.markdown(
+            "<div class='empty-state'>Generating suggestions…</div>",
+            unsafe_allow_html=True,
+        )
+        with st.spinner("Calling Claude…"):
+            db.generate_feed_suggestions()
+        st.rerun()
+        return
+
+    for s in suggestions:
+        sid      = s["id"]
+        name     = s.get("name") or "Unknown Feed"
+        url      = s.get("url") or ""
+        category = s.get("category") or "Other"
+        reason   = s.get("reason") or ""
+
+        st.markdown(
+            f"<div class='feed-disc-card'>"
+            f"<div class='feed-disc-name'>{name}</div>"
+            f"<div class='feed-disc-url'>"
+            f"<a href='{url}' target='_blank' style='color:#0A66C2;text-decoration:none;'>{url}</a>"
+            f"</div>"
+            f"{_feed_cat_pill(category)}"
+            f"<div class='feed-disc-reason' style='margin-top:8px;'>{reason}</div>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+        btn_l, btn_r, _ = st.columns([1, 1, 4])
+        with btn_l:
+            if st.button(
+                "➕ Add Feed",
+                key=f"sm_fdacc_{sid}",
+                type="primary",
+                use_container_width=True,
+                help="Adds to your feeds list",
+            ):
+                db.accept_feed_suggestion(sid)
+                st.toast(f"Added {name} to feeds")
+                st.rerun()
+        with btn_r:
+            if st.button(
+                "Not relevant",
+                key=f"sm_fddis_{sid}",
+                use_container_width=True,
+            ):
+                db.dismiss_feed_suggestion(sid)
+                st.rerun()
+        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    if st.button("🔄 Refresh Suggestions", key="sm_fd_refresh"):
+        with st.spinner("Generating new suggestions…"):
+            db.generate_feed_suggestions()
+        st.toast("New suggestions generating…")
+        st.rerun()
+
+    st.markdown(
+        "<div style='font-size:0.75rem;color:#4B5563;margin-top:12px;'>"
+        "New users start with no feeds. Use this tab to populate your feed list "
+        "based on your topics and industry.</div>",
+        unsafe_allow_html=True,
+    )
+
+
 # ── Main render ───────────────────────────────────────────────────────────────
 
 def render() -> None:
@@ -1236,3 +1636,43 @@ def render() -> None:
             "connection_pause_weekends": new_pause_weekends,
         })
         st.toast("Connection settings saved", icon="✅")
+
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+    st.markdown("<hr style='border-color:#2D3748;'/>", unsafe_allow_html=True)
+    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+
+    # ── Section 8: Research Agent Data Feeds ───────────────────────────────────
+    st.markdown("<div class='section-header'>Research Agent Data Feeds</div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div style='font-size:0.83rem;color:#9AA0B2;margin-bottom:16px;'>"
+        "RSS and blog sources monitored by the research agent.</div>",
+        unsafe_allow_html=True,
+    )
+
+    # Sub-tab navigation
+    ftab_l, ftab_r, _ = st.columns([1, 1, 4])
+    with ftab_l:
+        if st.button(
+            "📋  Feeds",
+            key="sm_ftab_feeds",
+            type="primary" if st.session_state.sm_feed_tab == 0 else "secondary",
+            use_container_width=True,
+        ):
+            st.session_state.sm_feed_tab = 0
+            st.rerun()
+    with ftab_r:
+        if st.button(
+            "✨  Discover",
+            key="sm_ftab_discover",
+            type="primary" if st.session_state.sm_feed_tab == 1 else "secondary",
+            use_container_width=True,
+        ):
+            st.session_state.sm_feed_tab = 1
+            st.rerun()
+
+    st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+
+    if st.session_state.sm_feed_tab == 0:
+        _render_feeds_tab()
+    else:
+        _render_feed_discover_tab()

@@ -235,6 +235,25 @@ def delete_feed(row_id: int) -> None:
     _delete(f"/feeds/{row_id}")
 
 
+# ── Feed Discover ─────────────────────────────────────────────────────────────
+
+def get_feed_suggestions() -> list[dict]:
+    result = _get("/discover/feeds")
+    return result if isinstance(result, list) else []
+
+
+def generate_feed_suggestions() -> dict:
+    return _post("/discover/feeds/generate")
+
+
+def accept_feed_suggestion(row_id: int) -> dict:
+    return _post(f"/discover/feeds/{row_id}/accept")
+
+
+def dismiss_feed_suggestion(row_id: int) -> dict:
+    return _post(f"/discover/feeds/{row_id}/dismiss")
+
+
 # ── Strategy ──────────────────────────────────────────────────────────────────
 
 def get_strategy() -> dict:
