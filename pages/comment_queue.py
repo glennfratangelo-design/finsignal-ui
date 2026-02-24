@@ -144,29 +144,45 @@ def _render_pending_cards(rows: list[dict], api_url: str) -> None:
         for row in group_rows:
             row_id       = row["id"]
             post_url     = row.get("post_url") or ""
-            snippet      = row.get("post_snippet") or ""
+            post_snippet = row.get("post_snippet") or ""
             comment_text = row.get("comment_text") or ""
             created      = row.get("created_at", "")[:16]
 
-            snippet_html = (
-                f'<div class="post-snippet">"{snippet[:300]}{"…" if len(snippet) > 300 else ""}"</div>'
-                if snippet
-                else ""
-            )
-
-            # Build the "View original post" link
+            # FIX 3 — View original post link
             if post_url:
                 post_link_html = (
-                    f'<div style="margin-bottom:8px;">'
-                    f'<a href="{post_url}" target="_blank" '
-                    f'style="font-size:0.78rem;color:#0A66C2;text-decoration:none;">'
-                    f'View original post →</a></div>'
+                    '<div style="margin-bottom:8px;">'
+                    f'<a href="{post_url}" target="_blank" rel="noopener noreferrer" '
+                    'style="font-size:0.78rem;color:#0A66C2;text-decoration:none;">'
+                    'View original post →</a></div>'
                 )
             else:
                 post_link_html = (
                     '<div style="margin-bottom:8px;font-size:0.78rem;color:#4B5563;">'
                     'Post URL unavailable</div>'
                 )
+
+            # FIX 4 — "Commenting on:" post context block
+            if post_snippet:
+                ctx_text = post_snippet[:150] + ("..." if len(post_snippet) > 150 else "")
+            elif post_url:
+                try:
+                    from urllib.parse import urlparse as _urlparse
+                    ctx_text = _urlparse(post_url).netloc or "linkedin.com post"
+                except Exception:
+                    ctx_text = "linkedin.com post"
+            else:
+                ctx_text = ""
+
+            if ctx_text:
+                post_context_html = (
+                    '<div style="font-size:0.75rem;color:#6B7280;margin-bottom:4px;">Commenting on:</div>'
+                    f'<div style="background:#161825;border-left:3px solid #0A66C2;'
+                    f'border-radius:0 4px 4px 0;padding:8px 12px;font-size:0.8rem;'
+                    f'color:#9AA0B2;line-height:1.5;margin-bottom:10px;">{ctx_text}</div>'
+                )
+            else:
+                post_context_html = ""
 
             st.markdown(
                 f"""
@@ -179,7 +195,7 @@ def _render_pending_cards(rows: list[dict], api_url: str) -> None:
                         </div>
                     </div>
                     {post_link_html}
-                    {snippet_html}
+                    {post_context_html}
                     <div class="reply-box">{comment_text}</div>
                 </div>
                 """,
