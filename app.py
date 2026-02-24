@@ -12,6 +12,7 @@ from pages import content_queue, comment_queue, influencer_manager, strategy_man
 
 API_URL = os.getenv("API_URL", "http://localhost:8000")
 
+# ── st.set_page_config MUST be the absolute first Streamlit command ────────────
 st.set_page_config(
     page_title="FinSignal",
     page_icon="📊",
@@ -134,45 +135,81 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ── Session state ──────────────────────────────────────────────────────────────
-if "active_tab" not in st.session_state:
-    st.session_state.active_tab = 0
 
-if "linkedin_access_token" not in st.session_state:
-    st.session_state.linkedin_access_token = None
-    st.session_state.linkedin_profile_name = None
-    st.session_state.linkedin_profile_title = None
-    st.session_state.linkedin_profile_picture_url = None
+# ── LinkedIn session initializer ───────────────────────────────────────────────
 
-if "linkedin_profile_checked" not in st.session_state:
-    st.session_state.linkedin_profile_checked = False
+def init_linkedin_session() -> None:
+    """Read OAuth callback query params and/or restore session from backend DB.
 
-# ── Init DB ────────────────────────────────────────────────────────────────────
-db.ensure_tables()
+    All st.query_params access is isolated here so it can be safely wrapped in
+    a try/except and retried on SessionInfo initialization errors.
+    """
+    try:
+        qp = st.query_params
+        if qp.get("linkedin_connected") == "true":
+            # OAuth callback — populate session from query params
+            st.session_state.linkedin_access_token        = "connected"
+            st.session_state.linkedin_profile_name        = qp.get("name", "")
+            st.session_state.linkedin_profile_title       = qp.get("email", "")
+            st.session_state.linkedin_profile_picture_url = qp.get("picture", "")
+            st.session_state.linkedin_profile_checked     = True
+            st.query_params.clear()
+            st.rerun()
+        elif not st.session_state.get("linkedin_access_token"):
+            # Try to restore from persisted token in backend DB
+            _profile = db.get_linkedin_profile()
+            if _profile.get("connected"):
+                st.session_state.linkedin_access_token        = "connected"
+                st.session_state.linkedin_profile_name        = _profile.get("name", "")
+                st.session_state.linkedin_profile_title       = (
+                    _profile.get("headline") or _profile.get("email", "")
+                )
+                st.session_state.linkedin_profile_picture_url = _profile.get("picture_url", "")
+    except Exception as e:
+        err = str(e).lower()
+        if "sessioninfo" in err or "session" in err:
+            st.rerun()
+        # Other errors: silently continue — LinkedIn state will just be unset
 
-# ── LinkedIn session restore ────────────────────────────────────────────────────
-if not st.session_state.linkedin_profile_checked:
-    qp = st.query_params
-    if qp.get("linkedin_connected") == "true":
-        # Redirect from OAuth callback — populate session from query params
-        st.session_state.linkedin_access_token       = "connected"
-        st.session_state.linkedin_profile_name       = qp.get("name", "")
-        st.session_state.linkedin_profile_title      = qp.get("email", "")
-        st.session_state.linkedin_profile_picture_url = qp.get("picture", "")
-        st.session_state.linkedin_profile_checked    = True
-        st.query_params.clear()
+
+# ── Session state initialization ───────────────────────────────────────────────
+
+try:
+    # Guard: check initialization flag before touching any session state
+    if "session_initialized" not in st.session_state:
+        st.session_state.session_initialized = False
+
+    if not st.session_state.session_initialized:
+        # Set defaults for keys that must always exist
+        if "active_tab" not in st.session_state:
+            st.session_state.active_tab = 0
+
+        if "linkedin_access_token" not in st.session_state:
+            st.session_state.linkedin_access_token        = None
+            st.session_state.linkedin_profile_name        = None
+            st.session_state.linkedin_profile_title       = None
+            st.session_state.linkedin_profile_picture_url = None
+
+        if "linkedin_profile_checked" not in st.session_state:
+            st.session_state.linkedin_profile_checked = False
+
+        # Init DB (no-op call — backend owns the schema)
+        db.ensure_tables()
+
+        # Restore LinkedIn session from query params or backend DB
+        if not st.session_state.linkedin_profile_checked:
+            init_linkedin_session()
+            st.session_state.linkedin_profile_checked = True
+
+        st.session_state.session_initialized = True
+
+except Exception as e:
+    err = str(e).lower()
+    if "sessioninfo" in err or "session" in err:
         st.rerun()
-    elif not st.session_state.linkedin_access_token:
-        # Try to restore from persisted token in backend DB
-        _profile = db.get_linkedin_profile()
-        if _profile.get("connected"):
-            st.session_state.linkedin_access_token       = "connected"
-            st.session_state.linkedin_profile_name       = _profile.get("name", "")
-            st.session_state.linkedin_profile_title      = (
-                _profile.get("headline") or _profile.get("email", "")
-            )
-            st.session_state.linkedin_profile_picture_url = _profile.get("picture_url", "")
-        st.session_state.linkedin_profile_checked = True
+        st.stop()
+    raise
+
 
 # ── Header ─────────────────────────────────────────────────────────────────────
 header_left, header_right = st.columns([3, 1])
@@ -191,7 +228,7 @@ with header_left:
     )
 
 with header_right:
-    if st.session_state.linkedin_access_token:
+    if st.session_state.get("linkedin_access_token"):
         pic   = st.session_state.linkedin_profile_picture_url or ""
         name  = st.session_state.linkedin_profile_name or "Connected"
         title = st.session_state.linkedin_profile_title or "LinkedIn"
@@ -236,6 +273,7 @@ with header_right:
                 "linkedin_connected",
                 "linkedin_profile_picture",
                 "linkedin_profile_email",
+                "session_initialized",
             ]:
                 st.session_state.pop(_key, None)
             st.rerun()
@@ -254,7 +292,7 @@ with header_right:
         )
 
 # LinkedIn connect warning banner
-if not st.session_state.linkedin_access_token:
+if not st.session_state.get("linkedin_access_token"):
     st.markdown(
         f"""
         <div class="li-banner">
