@@ -225,11 +225,18 @@ with header_right:
         st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
         if st.button("🔌 Disconnect LinkedIn", key="btn_logout", use_container_width=True):
             db.linkedin_logout()
-            st.session_state.linkedin_access_token        = None
-            st.session_state.linkedin_profile_name        = None
-            st.session_state.linkedin_profile_title       = None
-            st.session_state.linkedin_profile_picture_url = None
-            st.session_state.linkedin_profile_checked     = False
+            for _key in [
+                "linkedin_access_token",
+                "linkedin_profile_name",
+                "linkedin_profile_title",
+                "linkedin_profile_picture_url",
+                "linkedin_profile_checked",
+                "linkedin_profile",
+                "linkedin_connected",
+                "linkedin_profile_picture",
+                "linkedin_profile_email",
+            ]:
+                st.session_state.pop(_key, None)
             st.rerun()
     else:
         st.markdown(
