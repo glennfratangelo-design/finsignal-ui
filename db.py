@@ -12,6 +12,7 @@ import requests
 
 API_URL = os.getenv("API_URL", "https://web-production-d7d1d.up.railway.app")
 _TIMEOUT = 8
+_COPILOT_TIMEOUT = 45  # Co-pilot calls invoke Claude — needs longer timeout
 
 
 # ── HTTP helpers ──────────────────────────────────────────────────────────────
@@ -26,19 +27,19 @@ def _get(path: str, **params) -> list | dict:
         return [] if path not in ("/metrics",) else {}
 
 
-def _post(path: str, json: dict | None = None) -> dict:
+def _post(path: str, json: dict | None = None, timeout: int = _TIMEOUT) -> dict:
     try:
-        r = requests.post(f"{API_URL}{path}", json=json or {}, timeout=_TIMEOUT)
+        r = requests.post(f"{API_URL}{path}", json=json or {}, timeout=timeout)
         r.raise_for_status()
         return r.json()
     except Exception as e:
         print(f"[db] POST {path} failed: {e}")
-        return {"ok": False}
+        return {"ok": False, "error": str(e)}
 
 
-def _put(path: str, json: dict | None = None) -> dict:
+def _put(path: str, json: dict | None = None, timeout: int = _TIMEOUT) -> dict:
     try:
-        r = requests.put(f"{API_URL}{path}", json=json or {}, timeout=_TIMEOUT)
+        r = requests.put(f"{API_URL}{path}", json=json or {}, timeout=timeout)
         r.raise_for_status()
         return r.json()
     except Exception as e:
@@ -268,3 +269,63 @@ def score_post(text: str) -> dict:
         "cta":         result.get("cta", 0),
         "suggestion":  result.get("suggestion", ""),
     }
+
+
+# ── Topics ─────────────────────────────────────────────────────────────────────
+
+def get_topics() -> list[dict]:
+    result = _get("/topics")
+    return result if isinstance(result, list) else []
+
+
+def toggle_topic_active(row_id: int) -> dict:
+    return _put(f"/topics/{row_id}/toggle")
+
+
+def rebalance_topics() -> dict:
+    return _put("/topics/rebalance")
+
+
+def delete_topic(row_id: int) -> dict:
+    return _delete(f"/topics/{row_id}")
+
+
+def start_topic_copilot(user_message: str) -> dict:
+    result = _post("/topics/copilot/start", {"user_message": user_message}, timeout=_COPILOT_TIMEOUT)
+    return result if isinstance(result, dict) else {"ok": False}
+
+
+def message_topic_copilot(conv_id: int, user_message: str) -> dict:
+    result = _post(f"/topics/copilot/{conv_id}/message", {"user_message": user_message}, timeout=_COPILOT_TIMEOUT)
+    return result if isinstance(result, dict) else {"ok": False}
+
+
+def confirm_topic_copilot(conv_id: int) -> dict:
+    result = _post(f"/topics/copilot/{conv_id}/confirm", timeout=_COPILOT_TIMEOUT)
+    return result if isinstance(result, dict) else {"ok": False}
+
+
+# ── ICP ────────────────────────────────────────────────────────────────────────
+
+def get_icp() -> dict:
+    result = _get("/icp")
+    return result if isinstance(result, dict) else {"exists": False}
+
+
+def delete_icp() -> dict:
+    return _delete("/icp")
+
+
+def start_icp_copilot(user_message: str) -> dict:
+    result = _post("/icp/copilot/start", {"user_message": user_message}, timeout=_COPILOT_TIMEOUT)
+    return result if isinstance(result, dict) else {"ok": False}
+
+
+def message_icp_copilot(conv_id: int, user_message: str) -> dict:
+    result = _post(f"/icp/copilot/{conv_id}/message", {"user_message": user_message}, timeout=_COPILOT_TIMEOUT)
+    return result if isinstance(result, dict) else {"ok": False}
+
+
+def confirm_icp_copilot(conv_id: int) -> dict:
+    result = _post(f"/icp/copilot/{conv_id}/confirm", timeout=_COPILOT_TIMEOUT)
+    return result if isinstance(result, dict) else {"ok": False}
