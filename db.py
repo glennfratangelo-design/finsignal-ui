@@ -100,6 +100,10 @@ def delete_content(row_id: int) -> None:
     _delete(f"/content-queue/{row_id}")
 
 
+def schedule_post(row_id: int, scheduled_at: str) -> dict:
+    return _post(f"/posts/{row_id}/schedule", {"scheduled_at": scheduled_at})
+
+
 # ── Comment Queue ─────────────────────────────────────────────────────────────
 
 def get_comment_queue(status: Optional[str] = None) -> list[dict]:
