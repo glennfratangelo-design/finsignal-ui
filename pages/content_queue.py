@@ -489,10 +489,10 @@ def render(api_url: str = "http://localhost:8000") -> None:
         st.session_state.cq_filter = "drafts"
 
     filters = [
-        ("drafts",    f"Drafts ({len(drafts)})"       if drafts    else "Drafts"),
-        ("scheduled", f"Scheduled ({len(scheduled)})" if scheduled else "Scheduled"),
-        ("posted",    f"Posted ({len(posted)})"        if posted    else "Posted"),
-        ("ignored",   f"Ignored ({len(ignored)})"     if ignored   else "Ignored"),
+        ("drafts",    f"Drafts ({len(drafts)})"),
+        ("scheduled", f"Scheduled ({len(scheduled)})"),
+        ("posted",    f"Posted ({len(posted)})"),
+        ("ignored",   f"Ignored ({len(ignored)})"),
     ]
 
     f1, f2, f3, f4, _ = st.columns([1, 1.2, 1, 1, 2])
