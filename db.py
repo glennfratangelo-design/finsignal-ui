@@ -115,6 +115,10 @@ def update_comment_text(row_id: int, text: str) -> None:
     _put(f"/comment-queue/{row_id}", {"comment_text": text})
 
 
+def schedule_comment(row_id: int, scheduled_at: str) -> dict:
+    return _post(f"/comments/{row_id}/schedule", {"scheduled_at": scheduled_at})
+
+
 # ── Influencers ───────────────────────────────────────────────────────────────
 
 def get_influencers(status: Optional[str] = None) -> list[dict]:

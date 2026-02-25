@@ -1,10 +1,11 @@
 """
-Comment Queue page — pending inbox with approve / edit / ignore actions.
+Comment Queue page — pending inbox with approve / schedule / edit / ignore actions.
 """
 
 import re
 import requests as _requests
 import streamlit as st
+from datetime import datetime, timedelta, timezone
 import db
 
 _CSS = """
@@ -117,6 +118,61 @@ def _api(method: str, path: str, api_url: str) -> tuple[bool, dict]:
         return False, {"error": str(e)}
 
 
+def _generate_time_slots() -> list[tuple[str, str]]:
+    """Generate scheduling slots: next even hour, then every 2h up to 12h from now."""
+    now = datetime.utcnow()
+    # Round up to next even hour
+    hour = now.hour
+    if now.minute > 0 or now.second > 0:
+        hour += 1
+    if hour % 2 != 0:
+        hour += 1
+    # Build base: today at `hour`, forward
+    base = now.replace(minute=0, second=0, microsecond=0)
+    base = base.replace(hour=0) + timedelta(hours=hour)
+
+    slots = []
+    for step in range(6):  # 0,2,4,6,8,10 hours from base → up to 10h after base
+        slot_dt = base + timedelta(hours=step * 2)
+        delta = (slot_dt - now).total_seconds()
+        if delta < 30 * 60:
+            continue  # must be ≥ 30 min from now
+        if delta > 12 * 3600:
+            break
+        # Display in ET (UTC-5 rough approximation — keep simple)
+        local_dt = slot_dt - timedelta(hours=5)
+        hour_12 = local_dt.hour % 12 or 12
+        ampm = "AM" if local_dt.hour < 12 else "PM"
+        if local_dt.date() == (now - timedelta(hours=5)).date():
+            label = f"Today at {hour_12}:00 {ampm} ET"
+        else:
+            label = f"Tomorrow at {hour_12}:00 {ampm} ET"
+        iso = slot_dt.strftime("%Y-%m-%dT%H:%M:%S")
+        slots.append((label, iso))
+
+    return slots
+
+
+def _format_scheduled_time(iso_str: str) -> str:
+    """Format a UTC ISO datetime string as 'Today at 5:00 PM ET'."""
+    if not iso_str:
+        return ""
+    try:
+        dt = datetime.strptime(iso_str[:19], "%Y-%m-%dT%H:%M:%S")
+    except ValueError:
+        try:
+            dt = datetime.strptime(iso_str[:19], "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            return iso_str
+    local_dt = dt - timedelta(hours=5)  # rough ET
+    now_local = datetime.utcnow() - timedelta(hours=5)
+    hour_12 = local_dt.hour % 12 or 12
+    ampm = "AM" if local_dt.hour < 12 else "PM"
+    if local_dt.date() == now_local.date():
+        return f"Today at {hour_12}:00 {ampm} ET"
+    return f"Tomorrow at {hour_12}:00 {ampm} ET"
+
+
 def _render_pending_cards(rows: list[dict], api_url: str) -> None:
     if not rows:
         st.markdown(
@@ -195,7 +251,7 @@ def _render_pending_cards(rows: list[dict], api_url: str) -> None:
                 unsafe_allow_html=True,
             )
 
-            btn1, btn2, btn3, _spacer = st.columns([1.3, 1, 1, 4])
+            btn1, btn2, btn3, btn4, _spacer = st.columns([1.3, 1.1, 1, 1, 3])
 
             with btn1:
                 if st.button("✅ Approve & Post", key=f"cm_approve_{row_id}", type="primary"):
@@ -208,17 +264,59 @@ def _render_pending_cards(rows: list[dict], api_url: str) -> None:
                         st.error(f"Failed to post: {err}")
 
             with btn2:
-                if st.button("✏️ Edit Reply", key=f"cm_edit_{row_id}"):
-                    st.session_state[f"cm_editing_{row_id}"] = not st.session_state.get(
-                        f"cm_editing_{row_id}", False
-                    )
+                scheduling_this = st.session_state.get("scheduling_comment_id") == row_id
+                label = "⏰ Cancel Schedule" if scheduling_this else "⏰ Schedule"
+                if st.button(label, key=f"cm_schedule_btn_{row_id}"):
+                    if scheduling_this:
+                        st.session_state.pop("scheduling_comment_id", None)
+                    else:
+                        st.session_state["scheduling_comment_id"] = row_id
+                        st.session_state.pop(f"cm_editing_{row_id}", None)
                     st.rerun()
 
             with btn3:
+                if st.button("✏️ Edit", key=f"cm_edit_{row_id}"):
+                    st.session_state[f"cm_editing_{row_id}"] = not st.session_state.get(
+                        f"cm_editing_{row_id}", False
+                    )
+                    st.session_state.pop("scheduling_comment_id", None)
+                    st.rerun()
+
+            with btn4:
                 if st.button("🚫 Ignore", key=f"cm_ignore_{row_id}"):
                     _api("post", f"/comments/{row_id}/ignore", api_url)
                     db.update_comment_status(row_id, "ignored")
                     st.rerun()
+
+            # Inline scheduler
+            if st.session_state.get("scheduling_comment_id") == row_id:
+                slots = _generate_time_slots()
+                if not slots:
+                    st.warning("No scheduling slots available in the next 12 hours.")
+                else:
+                    with st.form(key=f"cm_schedule_form_{row_id}"):
+                        slot_labels = [s[0] for s in slots]
+                        slot_isos   = [s[1] for s in slots]
+                        choice_idx = st.selectbox(
+                            "Post at:",
+                            range(len(slot_labels)),
+                            format_func=lambda i: slot_labels[i],
+                            key=f"cm_slot_select_{row_id}",
+                        )
+                        sc, cc = st.columns(2)
+                        with sc:
+                            if st.form_submit_button("Confirm Schedule", use_container_width=True, type="primary"):
+                                result = db.schedule_comment(row_id, slot_isos[choice_idx])
+                                if result.get("ok"):
+                                    st.session_state.pop("scheduling_comment_id", None)
+                                    st.toast(f"⏰ Scheduled: {slot_labels[choice_idx]}")
+                                    st.rerun()
+                                else:
+                                    st.error(result.get("error", "Failed to schedule"))
+                        with cc:
+                            if st.form_submit_button("Cancel", use_container_width=True):
+                                st.session_state.pop("scheduling_comment_id", None)
+                                st.rerun()
 
             # Inline edit form
             if st.session_state.get(f"cm_editing_{row_id}"):
@@ -237,6 +335,54 @@ def _render_pending_cards(rows: list[dict], api_url: str) -> None:
                             st.rerun()
 
             st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+
+
+def _render_scheduled_rows(rows: list[dict], api_url: str) -> None:
+    if not rows:
+        st.markdown(
+            '<div class="empty-state"><div class="empty-icon">⏰</div>No scheduled comments</div>',
+            unsafe_allow_html=True,
+        )
+        return
+
+    st.info("Scheduled comments are posted automatically every 15 minutes.")
+
+    # Table header
+    st.markdown(
+        "<div style='display:flex;padding:6px 0;border-bottom:2px solid #374151;"
+        "font-size:0.72rem;color:#6B7280;text-transform:uppercase;letter-spacing:0.06em;gap:12px;'>"
+        "<span style='flex:2;'>Influencer</span>"
+        "<span style='flex:4;'>Comment</span>"
+        "<span style='flex:2;'>Scheduled For</span>"
+        "<span style='flex:1;'>Action</span>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+    for row in rows:
+        inf_name     = _extract_influencer_name(row.get("post_url", ""), row.get("influencer_name", ""))
+        comment_text = row.get("comment_text") or ""
+        scheduled_at = row.get("scheduled_at") or ""
+        row_id       = row["id"]
+        truncated    = comment_text[:80] + ("…" if len(comment_text) > 80 else "")
+        time_label   = _format_scheduled_time(scheduled_at)
+        inits        = "?" if inf_name in ("", "Influencer") else _initials(inf_name)
+
+        col_info, col_btn = st.columns([10, 1.5])
+        with col_info:
+            st.markdown(
+                f"<div style='display:flex;align-items:center;padding:9px 0;"
+                f"border-bottom:1px solid #2D3748;gap:12px;'>"
+                f"<span style='flex:2;font-size:0.85rem;font-weight:700;color:#FAFAFA;'>{inf_name}</span>"
+                f"<span style='flex:4;font-size:0.83rem;color:#9AA0B2;'>{truncated}</span>"
+                f"<span style='flex:2;font-size:0.78rem;color:#F59E0B;font-weight:600;'>{time_label}</span>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+        with col_btn:
+            if st.button("Cancel", key=f"cm_sched_cancel_{row_id}", help="Return to pending"):
+                db.update_comment_status(row_id, "pending")
+                st.rerun()
 
 
 def _render_posted_rows(rows: list[dict]) -> None:
@@ -312,23 +458,25 @@ def _render_ignored_rows(rows: list[dict]) -> None:
 def render(api_url: str = "http://localhost:8000") -> None:
     st.markdown(_CSS, unsafe_allow_html=True)
 
-    all_rows = db.get_comment_queue()
-    pending  = [r for r in all_rows if r["status"] in ("pending", "pending_urn")]
-    posted   = [r for r in all_rows if r["status"] == "posted"]
-    ignored  = [r for r in all_rows if r["status"] == "ignored"]
+    all_rows  = db.get_comment_queue()
+    pending   = [r for r in all_rows if r["status"] in ("pending", "pending_urn")]
+    scheduled = [r for r in all_rows if r["status"] == "scheduled"]
+    posted    = [r for r in all_rows if r["status"] == "posted"]
+    ignored   = [r for r in all_rows if r["status"] == "ignored"]
 
     # ── Filter chips ───────────────────────────────────────────────────────────
     if "cm_filter" not in st.session_state:
         st.session_state.cm_filter = "pending"
 
     filters = [
-        ("pending", f"Pending ({len(pending)})" if pending else "Pending"),
-        ("posted",  f"Posted ({len(posted)})"   if posted  else "Posted"),
-        ("ignored", f"Ignored ({len(ignored)})" if ignored else "Ignored"),
+        ("pending",   f"Pending ({len(pending)})"     if pending   else "Pending"),
+        ("scheduled", f"Scheduled ({len(scheduled)})" if scheduled else "Scheduled"),
+        ("posted",    f"Posted ({len(posted)})"        if posted    else "Posted"),
+        ("ignored",   f"Ignored ({len(ignored)})"     if ignored   else "Ignored"),
     ]
 
-    f1, f2, f3, _ = st.columns([1, 1, 1, 3])
-    for col, (filt, label) in zip([f1, f2, f3], filters):
+    f1, f2, f3, f4, _ = st.columns([1, 1.2, 1, 1, 2])
+    for col, (filt, label) in zip([f1, f2, f3, f4], filters):
         with col:
             is_active = st.session_state.cm_filter == filt
             if st.button(
@@ -346,6 +494,8 @@ def render(api_url: str = "http://localhost:8000") -> None:
 
     if active_filter == "pending":
         _render_pending_cards(pending, api_url)
+    elif active_filter == "scheduled":
+        _render_scheduled_rows(scheduled, api_url)
     elif active_filter == "posted":
         _render_posted_rows(posted)
     elif active_filter == "ignored":
