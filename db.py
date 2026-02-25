@@ -402,8 +402,8 @@ def reject_voice_change(row_id: int) -> dict:
     return _put(f"/voice-profile/history/{row_id}/reject")
 
 
-def start_voice_copilot(user_message: str) -> dict:
-    result = _post("/voice-profile/copilot/start", {"user_message": user_message}, timeout=_COPILOT_TIMEOUT)
+def start_voice_copilot() -> dict:
+    result = _post("/voice-profile/copilot/start", {}, timeout=_COPILOT_TIMEOUT)
     return result if isinstance(result, dict) else {"ok": False}
 
 
@@ -419,3 +419,12 @@ def confirm_voice_copilot(conv_id: int) -> dict:
 
 def trigger_analyze_edits() -> dict:
     return _post("/voice-profile/analyze-edits")
+
+
+def update_voice_profile(change_request: str) -> dict:
+    result = _post("/voice-profile/update", {"change_request": change_request}, timeout=_COPILOT_TIMEOUT)
+    return result if isinstance(result, dict) else {"ok": False}
+
+
+def update_voice_field(field_name: str, value: str) -> dict:
+    return _put("/voice-profile", {"field": field_name, "value": value})

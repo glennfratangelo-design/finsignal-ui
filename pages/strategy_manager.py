@@ -240,21 +240,28 @@ _CSS = """
 def _init_states() -> None:
     defaults = {
         # Voice Profile co-pilot state
-        "sm_voice_chat_active": False,
-        "sm_voice_conv_id":     None,
-        "sm_voice_messages":    [],
-        "sm_voice_draft":       None,
+        "sm_voice_chat_active":       False,
+        "sm_voice_chat_initialized":  False,
+        "sm_voice_conv_id":           None,
+        "sm_voice_messages":          [],
+        "sm_voice_draft":             None,
+        "sm_voice_input_key":         0,
+        "sm_voice_editing_field":     None,
+        "sm_voice_refine_result":     None,
+        "sm_voice_refine_key":        0,
         # Topic co-pilot state
         "sm_topic_chat_active": False,
         "sm_topic_conv_id":     None,
         "sm_topic_messages":    [],
         "sm_topic_draft":       None,
         "sm_topic_edit_id":     None,
+        "sm_topic_input_key":   0,
         # ICP co-pilot state
         "sm_icp_chat_active":   False,
         "sm_icp_conv_id":       None,
         "sm_icp_messages":      [],
         "sm_icp_draft":         None,
+        "sm_icp_input_key":     0,
         # Feed sub-tab state
         "sm_feed_tab":           0,     # 0=Feeds, 1=Discover
         "sm_feed_adding":        False,
@@ -283,6 +290,15 @@ def _render_chat_messages(messages: list) -> None:
 
 # ── Voice co-pilot UI ─────────────────────────────────────────────────────────
 
+def _voice_reset_chat() -> None:
+    """Clear all voice chat state."""
+    st.session_state.sm_voice_chat_active      = False
+    st.session_state.sm_voice_chat_initialized = False
+    st.session_state.sm_voice_conv_id          = None
+    st.session_state.sm_voice_messages         = []
+    st.session_state.sm_voice_draft            = None
+
+
 def _render_voice_copilot() -> None:
     st.markdown(
         "<div style='font-size:0.95rem;font-weight:700;color:#FAFAFA;margin-bottom:10px;'>"
@@ -290,86 +306,74 @@ def _render_voice_copilot() -> None:
         unsafe_allow_html=True,
     )
 
+    # Auto-initialize: call start on first render, get opening message
+    if not st.session_state.sm_voice_chat_initialized:
+        with st.spinner("Starting…"):
+            result = db.start_voice_copilot()
+        if result.get("conversation_id"):
+            st.session_state.sm_voice_conv_id  = result["conversation_id"]
+            st.session_state.sm_voice_messages = [
+                {"role": "assistant", "content": result.get("assistant_message", "")}
+            ]
+        st.session_state.sm_voice_chat_initialized = True
+        st.rerun()
+
     messages = st.session_state.sm_voice_messages
     _render_chat_messages(messages)
 
     draft = st.session_state.sm_voice_draft
     if draft:
         st.success("Voice profile ready — review and confirm below.")
-        tone_raw = draft.get("tone_descriptors", [])
-        if isinstance(tone_raw, list):
-            tone_pills = "".join(f"<span class='topic-tag'>{t}</span>&nbsp;" for t in tone_raw)
-        else:
-            tone_pills = f"<span class='topic-tag'>{tone_raw}</span>"
-        st.markdown(
-            f"<div class='icp-card' style='margin-bottom:12px;'>"
-            f"<div class='icp-label'>Tone</div><div style='margin:4px 0;'>{tone_pills}</div>"
-            f"<div class='icp-label'>Opens With</div>"
-            f"<div class='icp-value'>{draft.get('opening_patterns', '')}</div>"
-            f"<div class='icp-label'>Closes With</div>"
-            f"<div class='icp-value'>{draft.get('closing_patterns', '')}</div>"
-            f"<div class='icp-label'>Contrarian Level</div>"
-            f"<div class='icp-value'>{draft.get('contrarian_level', 'medium')}</div>"
-            f"</div>",
-            unsafe_allow_html=True,
-        )
+        # Draft preview: show all fields
+        _render_draft_preview(draft)
         col1, col2, col3 = st.columns([2, 2, 1])
         with col1:
             if st.button("Confirm & Save Voice", key="sm_voice_confirm", type="primary"):
                 conv_id = st.session_state.sm_voice_conv_id
                 result  = db.confirm_voice_copilot(conv_id)
                 if result.get("ok"):
-                    st.toast("Voice profile saved — all posts will now sound like you.", icon="✅")
-                    st.session_state.sm_voice_chat_active = False
-                    st.session_state.sm_voice_messages    = []
-                    st.session_state.sm_voice_draft       = None
-                    st.session_state.sm_voice_conv_id     = None
+                    st.toast("Voice profile saved — all posts will now sound like you.")
+                    _voice_reset_chat()
                     st.rerun()
                 else:
                     st.error(f"Save failed: {result.get('error', 'unknown error')}")
         with col2:
             if st.button("Start Over", key="sm_voice_restart"):
-                st.session_state.sm_voice_messages = []
-                st.session_state.sm_voice_draft    = None
-                st.session_state.sm_voice_conv_id  = None
+                st.session_state.sm_voice_messages         = []
+                st.session_state.sm_voice_draft            = None
+                st.session_state.sm_voice_conv_id          = None
+                st.session_state.sm_voice_chat_initialized = False
                 st.rerun()
         with col3:
             if st.button("Cancel", key="sm_voice_cancel_draft"):
-                st.session_state.sm_voice_chat_active = False
-                st.session_state.sm_voice_messages    = []
-                st.session_state.sm_voice_draft       = None
-                st.session_state.sm_voice_conv_id     = None
+                _voice_reset_chat()
                 st.rerun()
         return
 
-    input_col, btn_col = st.columns([5, 1])
-    with input_col:
+    # Input form with Enter-key support
+    if "sm_voice_input_key" not in st.session_state:
+        st.session_state.sm_voice_input_key = 0
+
+    with st.form(key=f"sm_voice_form_{st.session_state.sm_voice_input_key}"):
         user_input = st.text_input(
-            "", key="sm_voice_input",
-            placeholder="Share a post you wrote that felt most like you…",
+            "",
+            placeholder="Paste your posts and describe your voice…",
             label_visibility="collapsed",
         )
-    with btn_col:
-        send = st.button("Send", key="sm_voice_send", use_container_width=True)
+        in_col, send_col = st.columns([6, 1])
+        with send_col:
+            submitted = st.form_submit_button("Send", use_container_width=True)
 
-    cancel_col, _ = st.columns([1, 5])
+    cancel_col, _ = st.columns([1, 6])
     with cancel_col:
         if st.button("Cancel", key="sm_voice_cancel", use_container_width=True):
-            st.session_state.sm_voice_chat_active = False
-            st.session_state.sm_voice_messages    = []
-            st.session_state.sm_voice_draft       = None
-            st.session_state.sm_voice_conv_id     = None
+            _voice_reset_chat()
             st.rerun()
 
-    if send and user_input:
+    if submitted and user_input:
+        conv_id = st.session_state.sm_voice_conv_id
         with st.spinner("Thinking…"):
-            conv_id = st.session_state.sm_voice_conv_id
-            if conv_id is None:
-                result = db.start_voice_copilot(user_input)
-                if result.get("conversation_id"):
-                    st.session_state.sm_voice_conv_id = result["conversation_id"]
-            else:
-                result = db.message_voice_copilot(conv_id, user_input)
+            result = db.message_voice_copilot(conv_id, user_input)
 
         if "error" in result and not result.get("assistant_message"):
             st.error(f"Co-pilot error: {result['error']}")
@@ -381,24 +385,247 @@ def _render_voice_copilot() -> None:
         st.session_state.sm_voice_messages = msgs
 
         if result.get("is_complete"):
-            st.session_state.sm_voice_draft = result.get("voice_draft")
+            st.session_state.sm_voice_draft = (
+                result.get("profile_draft") or result.get("voice_draft")
+            )
 
+        st.session_state.sm_voice_input_key += 1
         st.rerun()
+
+
+def _render_draft_preview(draft: dict) -> None:
+    """Show profile_draft fields as a structured preview card."""
+    def _v(key, fallback=""):
+        return draft.get(key) or draft.get(fallback) or "—"
+
+    tone_raw = _v("tone_descriptors")
+    if isinstance(tone_raw, list):
+        tone_html = "".join(f"<span class='topic-tag'>{t.strip()}</span>&nbsp;" for t in tone_raw)
+    else:
+        tone_html = "".join(
+            f"<span class='topic-tag'>{t.strip()}</span>&nbsp;"
+            for t in str(tone_raw).split(",") if t.strip()
+        ) or f"<span class='icp-value'>{tone_raw}</span>"
+
+    st.markdown(
+        f"<div class='icp-card' style='margin-bottom:12px;'>"
+        f"<div class='icp-label'>Tone</div><div style='margin:4px 0;'>{tone_html}</div>"
+        f"<div class='icp-label'>Sentence Style</div>"
+        f"<div class='icp-value'>{_v('sentence_style', 'sentence_structure')}</div>"
+        f"<div class='icp-label'>Opens With</div>"
+        f"<div class='icp-value'>{_v('opening_style', 'opening_patterns')}</div>"
+        f"<div class='icp-label'>Closes With</div>"
+        f"<div class='icp-value'>{_v('closing_style', 'closing_patterns')}</div>"
+        f"<div class='icp-label'>Use These Words</div>"
+        f"<div class='icp-value'>{_v('vocabulary_preferred')}</div>"
+        f"<div class='icp-label'>Avoid These Words</div>"
+        f"<div class='icp-value'>{_v('vocabulary_avoided')}</div>"
+        f"<div class='icp-label'>Formatting Rules</div>"
+        f"<div class='icp-value'>{_v('formatting_rules', 'structural_patterns')}</div>"
+        f"<div class='icp-label'>Contrarian Level</div>"
+        f"<div class='icp-value'>{_v('contrarian_level')}</div>"
+        f"<div class='icp-label'>Citation Rules</div>"
+        f"<div class='icp-value'>{_v('citation_rules')}</div>"
+        f"<div class='icp-label'>Special Rules</div>"
+        f"<div class='icp-value'>{_v('special_rules')}</div>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
 
 
 # ── Voice Profile section ─────────────────────────────────────────────────────
 
-def _render_voice_section() -> None:
-    header_col, btn_col = st.columns([3, 1])
-    with header_col:
-        st.markdown(
-            "<div class='section-header'>Your Voice</div>", unsafe_allow_html=True
+def _get_vp(vp: dict, new_key: str, old_key: str = "") -> str:
+    """Return vp field — check new_key first, fall back to old_key."""
+    v = vp.get(new_key, "")
+    if not v and old_key:
+        v = vp.get(old_key, "")
+    return v or ""
+
+
+def _tone_pills(raw) -> str:
+    if isinstance(raw, list):
+        words = raw
+    else:
+        words = [w.strip() for w in str(raw or "").split(",") if w.strip()]
+    return "".join(f"<span class='topic-tag'>{w}</span>&nbsp;" for w in words) or "<span style='color:#6B7280'>Not set</span>"
+
+
+def _gray_pills(raw: str) -> str:
+    words = [w.strip() for w in str(raw or "").split(",") if w.strip()]
+    return "".join(f"<span class='pill'>{w}</span>&nbsp;" for w in words) or "<span style='color:#6B7280'>Not set</span>"
+
+
+def _red_pills(raw: str) -> str:
+    words = [w.strip() for w in str(raw or "").split(",") if w.strip()]
+    return "".join(
+        f"<span class='pill' style='background:#2D1515;color:#FF6B6B;'>{w}</span>&nbsp;"
+        for w in words
+    ) or "<span style='color:#6B7280'>Not set</span>"
+
+
+def _contrarian_display(level: str) -> str:
+    level = (level or "medium").lower()
+    html = ""
+    for opt in ("low", "medium", "high"):
+        active = opt == level
+        bg = "#0A66C2" if active else "#2D3748"
+        html += (
+            f"<span style='background:{bg};color:#fff;padding:2px 12px;"
+            f"border-radius:20px;font-size:0.75rem;margin-right:4px;'>{opt.title()}</span>"
         )
+    return html
+
+
+def _render_profile_row(label: str, field: str, display_html: str, edit_value: str) -> None:
+    """Render one row of the voice profile card with label, value, and pencil."""
+    editing = st.session_state.sm_voice_editing_field == field
+    lc, vc, pc = st.columns([1.8, 5, 0.5])
+    with lc:
         st.markdown(
-            "<div style='font-size:0.82rem;color:#6B7280;margin-top:-8px;margin-bottom:12px;'>"
-            "How you sound to the world. Every post and comment reflects this.</div>",
+            f"<div style='font-size:0.72rem;color:#9AA0B2;text-transform:uppercase;"
+            f"letter-spacing:0.07em;padding-top:10px;'>{label}</div>",
             unsafe_allow_html=True,
         )
+    with vc:
+        if not editing:
+            st.markdown(
+                f"<div style='font-size:0.88rem;color:#FAFAFA;padding:8px 0;line-height:1.5;'>"
+                f"{display_html}</div>",
+                unsafe_allow_html=True,
+            )
+        else:
+            new_val = st.text_area(
+                f"edit_{field}", value=edit_value, height=80,
+                label_visibility="collapsed", key=f"sm_vpf_{field}",
+            )
+            sv, cv = st.columns(2)
+            with sv:
+                if st.button("Save", key=f"sm_vp_save_{field}", type="primary", use_container_width=True):
+                    result = db.update_voice_field(field, new_val)
+                    if result.get("ok"):
+                        st.session_state.sm_voice_editing_field = None
+                        st.toast(f"{label} updated")
+                        st.rerun()
+                    else:
+                        st.error(result.get("error", "Failed"))
+            with cv:
+                if st.button("Cancel", key=f"sm_vp_cancel_{field}", use_container_width=True):
+                    st.session_state.sm_voice_editing_field = None
+                    st.rerun()
+    with pc:
+        if not editing:
+            if st.button("✏️", key=f"sm_vp_edit_{field}", help=f"Edit {label}"):
+                st.session_state.sm_voice_editing_field = field
+                st.rerun()
+    st.markdown("<div style='height:4px;border-bottom:1px solid #2D3748;margin-bottom:4px;'></div>", unsafe_allow_html=True)
+
+
+def _render_voice_profile_card(vp: dict) -> None:
+    hc, bc = st.columns([4, 1])
+    with hc:
+        st.markdown(
+            "<div style='font-size:1rem;font-weight:700;color:#FAFAFA;margin-bottom:2px;'>"
+            "Your Voice Profile</div>",
+            unsafe_allow_html=True,
+        )
+    with bc:
+        if st.button("Reset Voice", key="sm_reset_voice"):
+            db.delete_voice_profile()
+            st.toast("Voice profile reset")
+            st.rerun()
+
+    st.markdown("<div class='icp-card' style='margin-top:8px;'>", unsafe_allow_html=True)
+
+    tone_raw = _get_vp(vp, "tone_descriptors")
+    _render_profile_row("Tone", "tone_descriptors", _tone_pills(tone_raw), tone_raw if isinstance(tone_raw, str) else ", ".join(tone_raw) if isinstance(tone_raw, list) else "")
+
+    _render_profile_row("Sentence Style", "sentence_style",
+        f"<span style='color:#FAFAFA'>{_get_vp(vp, 'sentence_style', 'sentence_structure') or '<em style=\"color:#6B7280\">Not set</em>'}</span>",
+        _get_vp(vp, "sentence_style", "sentence_structure"))
+
+    _render_profile_row("Opens With", "opening_style",
+        f"<span style='color:#FAFAFA'>{_get_vp(vp, 'opening_style', 'opening_patterns') or '<em style=\"color:#6B7280\">Not set</em>'}</span>",
+        _get_vp(vp, "opening_style", "opening_patterns"))
+
+    _render_profile_row("Closes With", "closing_style",
+        f"<span style='color:#FAFAFA'>{_get_vp(vp, 'closing_style', 'closing_patterns') or '<em style=\"color:#6B7280\">Not set</em>'}</span>",
+        _get_vp(vp, "closing_style", "closing_patterns"))
+
+    vocab_pref = _get_vp(vp, "vocabulary_preferred")
+    _render_profile_row("Use These Words", "vocabulary_preferred", _gray_pills(vocab_pref), vocab_pref)
+
+    vocab_avoid = _get_vp(vp, "vocabulary_avoided")
+    _render_profile_row("Avoid These Words", "vocabulary_avoided", _red_pills(vocab_avoid), vocab_avoid)
+
+    fmt = _get_vp(vp, "formatting_rules", "structural_patterns")
+    _render_profile_row("Formatting Rules", "formatting_rules",
+        f"<span style='color:#FAFAFA'>{fmt or '<em style=\"color:#6B7280\">Not set</em>'}</span>",
+        fmt)
+
+    contrarian = _get_vp(vp, "contrarian_level") or "medium"
+    _render_profile_row("Contrarian Level", "contrarian_level",
+        _contrarian_display(contrarian), contrarian)
+
+    cite = _get_vp(vp, "citation_rules")
+    _render_profile_row("Citation Rules", "citation_rules",
+        f"<span style='color:#FAFAFA;font-weight:500;'>{cite or '<em style=\"color:#6B7280\">Not set</em>'}</span>",
+        cite)
+
+    spec = _get_vp(vp, "special_rules")
+    _render_profile_row("Special Rules", "special_rules",
+        f"<span style='color:#FAFAFA'>{spec or '<em style=\"color:#6B7280\">Not set</em>'}</span>",
+        spec)
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+def _render_voice_refine() -> None:
+    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div style='font-size:0.95rem;font-weight:700;color:#FAFAFA;margin-bottom:2px;'>Refine Your Voice</div>"
+        "<div style='font-size:0.78rem;color:#6B7280;margin-bottom:10px;'>"
+        "Describe a change in plain language</div>",
+        unsafe_allow_html=True,
+    )
+
+    refine_result = st.session_state.get("sm_voice_refine_result")
+    if refine_result:
+        exp = refine_result.get("explanation", "")
+        st.success(f"Voice updated — {exp}")
+        updated = refine_result.get("updated_fields", {})
+        if updated:
+            before_after = "  ".join(f"**{k}** → {v}" for k, v in updated.items())
+            st.markdown(f"<div style='font-size:0.8rem;color:#9AA0B2;'>{before_after}</div>",
+                        unsafe_allow_html=True)
+        st.session_state.sm_voice_refine_result = None
+
+    with st.form(key=f"sm_voice_refine_form_{st.session_state.sm_voice_refine_key}"):
+        change_input = st.text_input(
+            "",
+            placeholder="e.g. I want to cite sources more, be more direct, avoid em-dashes…",
+            label_visibility="collapsed",
+        )
+        submitted = st.form_submit_button("Apply Change", type="primary")
+
+    if submitted and change_input:
+        with st.spinner("Applying…"):
+            result = db.update_voice_profile(change_input)
+        if result.get("ok"):
+            st.session_state.sm_voice_refine_result = result
+            st.session_state.sm_voice_refine_key   += 1
+        else:
+            st.error(result.get("error", "Failed to apply change"))
+        st.rerun()
+
+
+def _render_voice_section() -> None:
+    st.markdown(
+        "<div class='section-header'>Your Voice</div>"
+        "<div style='font-size:0.82rem;color:#6B7280;margin-top:-8px;margin-bottom:12px;'>"
+        "How you sound to the world. Every post and comment reflects this.</div>",
+        unsafe_allow_html=True,
+    )
 
     if st.session_state.sm_voice_chat_active:
         _render_voice_copilot()
@@ -416,83 +643,17 @@ def _render_voice_section() -> None:
         )
         st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
         if st.button("Start Voice Setup", key="sm_start_voice", type="primary"):
-            st.session_state.sm_voice_chat_active = True
-            st.session_state.sm_voice_messages    = []
-            st.session_state.sm_voice_draft       = None
-            st.session_state.sm_voice_conv_id     = None
+            st.session_state.sm_voice_chat_active      = True
+            st.session_state.sm_voice_chat_initialized = False
+            st.session_state.sm_voice_messages         = []
+            st.session_state.sm_voice_draft            = None
+            st.session_state.sm_voice_conv_id          = None
             st.rerun()
         return
 
-    # Voice profile confirmed — show profile card
-    tone_raw = vp.get("tone_descriptors", [])
-    if isinstance(tone_raw, list):
-        tone_pills = "".join(f"<span class='topic-tag'>{t}</span>&nbsp;" for t in tone_raw)
-    elif tone_raw:
-        tone_pills = "".join(
-            f"<span class='topic-tag'>{t.strip()}</span>&nbsp;"
-            for t in str(tone_raw).split(",") if t.strip()
-        )
-    else:
-        tone_pills = "<span class='icp-value'>Not set</span>"
-
-    st.markdown(
-        f"<div class='icp-card'>"
-        f"<div class='icp-label'>Tone</div>"
-        f"<div style='margin:6px 0;'>{tone_pills}</div>"
-        f"<div class='icp-label'>Writing Patterns</div>"
-        f"<div class='icp-value' style='margin-top:4px;'>"
-        f"Opens with: {vp.get('opening_patterns', 'Not set')}<br>"
-        f"Closes with: {vp.get('closing_patterns', 'Not set')}"
-        f"</div>"
-        f"<div class='icp-label'>Settings</div>"
-        f"<div class='icp-value'>"
-        f"Contrarian: {vp.get('contrarian_level', 'medium')} &nbsp;|&nbsp; "
-        f"Humor: {vp.get('humor_level', 'dry')} &nbsp;|&nbsp; "
-        f"Personal disclosure: {vp.get('personal_disclosure', 'occasional')}"
-        f"</div>"
-        f"</div>",
-        unsafe_allow_html=True,
-    )
-
-    st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
-    edit_col, reset_col, _ = st.columns([1, 1, 4])
-    with edit_col:
-        if st.button("Edit Voice", key="sm_edit_voice", type="primary"):
-            tone_str = (
-                ", ".join(tone_raw) if isinstance(tone_raw, list) else str(tone_raw)
-            )
-            edit_msg = (
-                f"I want to refine my voice profile. My current tone is: {tone_str}. "
-                f"I typically open posts like: {vp.get('opening_patterns', '')}. "
-                "Please help me refine or update it."
-            )
-            st.session_state.sm_voice_chat_active    = True
-            st.session_state.sm_voice_messages       = []
-            st.session_state.sm_voice_draft          = None
-            st.session_state.sm_voice_conv_id        = None
-            st.session_state.sm_voice_edit_prefill   = edit_msg
-            st.rerun()
-    with reset_col:
-        if st.button("Reset Voice", key="sm_reset_voice"):
-            db.delete_voice_profile()
-            st.toast("Voice profile reset", icon="🗑️")
-            st.rerun()
-
-    # Handle edit prefill
-    if st.session_state.get("sm_voice_edit_prefill") and st.session_state.sm_voice_chat_active:
-        prefill = st.session_state.pop("sm_voice_edit_prefill")
-        with st.spinner("Loading voice profile for editing…"):
-            result = db.start_voice_copilot(prefill)
-        if result.get("conversation_id"):
-            st.session_state.sm_voice_conv_id  = result["conversation_id"]
-            st.session_state.sm_voice_messages = [
-                {"role": "user",      "content": prefill},
-                {"role": "assistant", "content": result.get("assistant_message", "")},
-            ]
-            if result.get("is_complete"):
-                st.session_state.sm_voice_draft = result.get("voice_draft")
-        st.rerun()
-
+    # Confirmed: show structured editable card
+    _render_voice_profile_card(vp)
+    _render_voice_refine()
     _render_voice_learning()
 
 
@@ -595,16 +756,16 @@ def _render_topic_copilot() -> None:
                 st.rerun()
         return
 
-    # Input row
-    input_col, btn_col = st.columns([5, 1])
-    with input_col:
+    # Input form with Enter-key support
+    with st.form(key=f"sm_topic_form_{st.session_state.sm_topic_input_key}"):
         user_input = st.text_input(
-            "", key="sm_topic_input",
+            "",
             placeholder="Describe the topic you want to cover…",
             label_visibility="collapsed",
         )
-    with btn_col:
-        send = st.button("Send", key="sm_topic_send", use_container_width=True)
+        _, send_col = st.columns([6, 1])
+        with send_col:
+            submitted = st.form_submit_button("Send", use_container_width=True)
 
     cancel_col, _ = st.columns([1, 5])
     with cancel_col:
@@ -615,7 +776,7 @@ def _render_topic_copilot() -> None:
             st.session_state.sm_topic_conv_id     = None
             st.rerun()
 
-    if send and user_input:
+    if submitted and user_input:
         with st.spinner("Thinking…"):
             conv_id = st.session_state.sm_topic_conv_id
             if conv_id is None:
@@ -637,6 +798,7 @@ def _render_topic_copilot() -> None:
         if result.get("is_complete"):
             st.session_state.sm_topic_draft = result.get("topic_draft")
 
+        st.session_state.sm_topic_input_key += 1
         st.rerun()
 
 
@@ -807,15 +969,16 @@ def _render_icp_copilot() -> None:
                 st.rerun()
         return
 
-    input_col, btn_col = st.columns([5, 1])
-    with input_col:
+    # Input form with Enter-key support
+    with st.form(key=f"sm_icp_form_{st.session_state.sm_icp_input_key}"):
         user_input = st.text_input(
-            "", key="sm_icp_input",
+            "",
             placeholder="Tell me about the audience you're writing for…",
             label_visibility="collapsed",
         )
-    with btn_col:
-        send = st.button("Send", key="sm_icp_send", use_container_width=True)
+        _, send_col = st.columns([6, 1])
+        with send_col:
+            submitted = st.form_submit_button("Send", use_container_width=True)
 
     cancel_col, _ = st.columns([1, 5])
     with cancel_col:
@@ -826,7 +989,7 @@ def _render_icp_copilot() -> None:
             st.session_state.sm_icp_conv_id     = None
             st.rerun()
 
-    if send and user_input:
+    if submitted and user_input:
         with st.spinner("Thinking…"):
             conv_id = st.session_state.sm_icp_conv_id
             if conv_id is None:
@@ -848,6 +1011,7 @@ def _render_icp_copilot() -> None:
         if result.get("is_complete"):
             st.session_state.sm_icp_draft = result.get("icp_draft")
 
+        st.session_state.sm_icp_input_key += 1
         st.rerun()
 
 
