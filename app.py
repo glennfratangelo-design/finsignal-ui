@@ -367,10 +367,14 @@ try:  # ── Wrap entire app body to catch SessionInfo errors ─────�
             <div class="metric-card">
                 <div class="metric-label">Posts</div>
                 <div class="metric-value">{posts_count}</div>
+                <div class="metric-sub">posted to LinkedIn</div>
             </div>
             """,
             unsafe_allow_html=True,
         )
+        if st.button("View Posts →", key="nav_to_posts", use_container_width=True):
+            st.session_state.active_tab = 0
+            st.rerun()
         pr = st.session_state.posts_range
         p1, p2, p3 = st.columns(3)
         for _col, _lbl in zip([p1, p2, p3], _range_labels):
@@ -382,6 +386,7 @@ try:  # ── Wrap entire app body to catch SessionInfo errors ─────�
                     use_container_width=True,
                 ):
                     st.session_state.posts_range = _lbl
+                    st.session_state.active_tab = 0
                     st.rerun()
 
     # ── Card 2: Comments ───────────────────────────────────────────────────────
@@ -391,10 +396,14 @@ try:  # ── Wrap entire app body to catch SessionInfo errors ─────�
             <div class="metric-card">
                 <div class="metric-label">Comments</div>
                 <div class="metric-value">{comments_count}</div>
+                <div class="metric-sub">posted to LinkedIn</div>
             </div>
             """,
             unsafe_allow_html=True,
         )
+        if st.button("View Comments →", key="nav_to_comments", use_container_width=True):
+            st.session_state.active_tab = 1
+            st.rerun()
         cr = st.session_state.comments_range
         q1, q2, q3 = st.columns(3)
         for _col, _lbl in zip([q1, q2, q3], _range_labels):
@@ -406,6 +415,7 @@ try:  # ── Wrap entire app body to catch SessionInfo errors ─────�
                     use_container_width=True,
                 ):
                     st.session_state.comments_range = _lbl
+                    st.session_state.active_tab = 1
                     st.rerun()
 
     # ── Card 3: Next Agent Run ─────────────────────────────────────────────────
