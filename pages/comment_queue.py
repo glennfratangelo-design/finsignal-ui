@@ -135,7 +135,7 @@ def _render_pending_cards(rows: list[dict], api_url: str) -> None:
         groups.setdefault(inf_name, []).append(row)
 
     for inf_name, group_rows in groups.items():
-        inits = _initials(inf_name)
+        inits = "?" if inf_name in ("", "Influencer") else _initials(inf_name)
         st.markdown(
             f'<div class="group-label">{inf_name} — {len(group_rows)} draft{"s" if len(group_rows) != 1 else ""}</div>',
             unsafe_allow_html=True,
@@ -144,12 +144,12 @@ def _render_pending_cards(rows: list[dict], api_url: str) -> None:
         for row in group_rows:
             row_id       = row["id"]
             post_url     = row.get("post_url") or ""
-            post_snippet = row.get("post_snippet") or ""
+            post_content = row.get("post_content") or row.get("post_snippet") or ""
             comment_text = row.get("comment_text") or ""
             created      = row.get("created_at", "")[:16]
 
-            # FIX 3 — View original post link
-            if post_url:
+            # View original post link — only shown for real https:// URLs
+            if post_url.startswith("https://"):
                 post_link_html = (
                     '<div style="margin-bottom:8px;">'
                     f'<a href="{post_url}" target="_blank" rel="noopener noreferrer" '
@@ -157,24 +157,11 @@ def _render_pending_cards(rows: list[dict], api_url: str) -> None:
                     'View original post →</a></div>'
                 )
             else:
-                post_link_html = (
-                    '<div style="margin-bottom:8px;font-size:0.78rem;color:#4B5563;">'
-                    'Post URL unavailable</div>'
-                )
+                post_link_html = ""
 
-            # FIX 4 — "Commenting on:" post context block
-            if post_snippet:
-                ctx_text = post_snippet[:150] + ("..." if len(post_snippet) > 150 else "")
-            elif post_url:
-                try:
-                    from urllib.parse import urlparse as _urlparse
-                    ctx_text = _urlparse(post_url).netloc or "linkedin.com post"
-                except Exception:
-                    ctx_text = "linkedin.com post"
-            else:
-                ctx_text = ""
-
-            if ctx_text:
+            # "Commenting on:" post context block
+            if post_content:
+                ctx_text = post_content[:200] + ("..." if len(post_content) > 200 else "")
                 post_context_html = (
                     '<div style="font-size:0.75rem;color:#6B7280;margin-bottom:4px;">Commenting on:</div>'
                     f'<div style="background:#161825;border-left:3px solid #0A66C2;'
@@ -182,7 +169,13 @@ def _render_pending_cards(rows: list[dict], api_url: str) -> None:
                     f'color:#9AA0B2;line-height:1.5;margin-bottom:10px;">{ctx_text}</div>'
                 )
             else:
-                post_context_html = ""
+                post_context_html = (
+                    '<div style="font-size:0.75rem;color:#6B7280;margin-bottom:4px;">Commenting on:</div>'
+                    '<div style="background:#161825;border-left:3px solid #2D3748;'
+                    'border-radius:0 4px 4px 0;padding:8px 12px;font-size:0.8rem;'
+                    'color:#4B5563;font-style:italic;line-height:1.5;margin-bottom:10px;">'
+                    'Post content unavailable — view original post for context</div>'
+                )
 
             st.markdown(
                 f"""
