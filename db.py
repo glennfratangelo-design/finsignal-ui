@@ -66,15 +66,14 @@ def ensure_tables() -> None:
 
 # ── Metrics ───────────────────────────────────────────────────────────────────
 
-def get_metrics() -> dict:
-    result = _get("/metrics")
+def get_metrics(time_range: str = "7days") -> dict:
+    result = _get("/metrics", **{"range": time_range})
     if not isinstance(result, dict):
         result = {}
     return {
-        "posts_this_week":  result.get("posts_this_week", 0),
-        "draft_count":      result.get("draft_count", 0),
+        "posts_count":      result.get("posts_count", 0),
+        "comments_count":   result.get("comments_count", 0),
         "pending_comments": result.get("pending_comments", 0),
-        "warm_influencers": result.get("warm_influencers", 0),
     }
 
 

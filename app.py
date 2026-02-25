@@ -192,6 +192,12 @@ try:  # ── Wrap entire app body to catch SessionInfo errors ─────�
     if "active_tab" not in st.session_state:
         st.session_state.active_tab = 0
 
+    if "posts_range" not in st.session_state:
+        st.session_state.posts_range = "7 Days"
+
+    if "comments_range" not in st.session_state:
+        st.session_state.comments_range = "7 Days"
+
     if "linkedin_connected" not in st.session_state:
         st.session_state.linkedin_connected = False
 
@@ -309,10 +315,6 @@ try:  # ── Wrap entire app body to catch SessionInfo errors ─────�
     st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 
     # ── Metrics row ────────────────────────────────────────────────────────────────
-    metrics = db.get_metrics()
-
-    c1, c2, c3, c4, c5 = st.columns(5)
-
 
     def _next_agent_run() -> str:
         """Return countdown string to next scheduled agent run (ET approximation)."""
@@ -346,70 +348,68 @@ try:  # ── Wrap entire app body to catch SessionInfo errors ─────�
         h, m = divmod(total_mins, 60)
         return f"{h}h {m}m" if h else f"{m}m"
 
+    _range_param = {"Today": "today", "7 Days": "7days", "30 Days": "30days"}
+    _range_labels = ["Today", "7 Days", "30 Days"]
 
+    posts_metrics    = db.get_metrics(time_range=_range_param[st.session_state.posts_range])
+    comments_metrics = db.get_metrics(time_range=_range_param[st.session_state.comments_range])
+
+    posts_count      = posts_metrics["posts_count"]
+    comments_count   = comments_metrics["comments_count"]
+    pending_comments = posts_metrics["pending_comments"]  # not range-filtered
+
+    c1, c2, c3 = st.columns(3)
+
+    # ── Card 1: Posts ──────────────────────────────────────────────────────────
     with c1:
         st.markdown(
             f"""
             <div class="metric-card">
-                <div class="metric-label">Posts This Week</div>
-                <div class="metric-value">{metrics['posts_this_week']}</div>
-                <div class="metric-sub">content queue items created</div>
+                <div class="metric-label">Posts</div>
+                <div class="metric-value">{posts_count}</div>
             </div>
             """,
             unsafe_allow_html=True,
         )
-        if st.button("📝 View Content →", key="nav_content", use_container_width=True):
-            st.session_state.active_tab = 0
-            st.rerun()
+        pr = st.session_state.posts_range
+        p1, p2, p3 = st.columns(3)
+        for _col, _lbl in zip([p1, p2, p3], _range_labels):
+            with _col:
+                if st.button(
+                    _lbl,
+                    key=f"pr_{_lbl}",
+                    type="primary" if pr == _lbl else "secondary",
+                    use_container_width=True,
+                ):
+                    st.session_state.posts_range = _lbl
+                    st.rerun()
 
+    # ── Card 2: Comments ───────────────────────────────────────────────────────
     with c2:
         st.markdown(
             f"""
             <div class="metric-card">
-                <div class="metric-label">Drafts Pending</div>
-                <div class="metric-value">{metrics['draft_count']}</div>
-                <div class="metric-sub">awaiting review &amp; approval</div>
+                <div class="metric-label">Comments</div>
+                <div class="metric-value">{comments_count}</div>
             </div>
             """,
             unsafe_allow_html=True,
         )
-        if st.button("📋 Review Drafts →", key="nav_drafts", use_container_width=True):
-            st.session_state.active_tab = 0
-            st.rerun()
+        cr = st.session_state.comments_range
+        q1, q2, q3 = st.columns(3)
+        for _col, _lbl in zip([q1, q2, q3], _range_labels):
+            with _col:
+                if st.button(
+                    _lbl,
+                    key=f"cr_{_lbl}",
+                    type="primary" if cr == _lbl else "secondary",
+                    use_container_width=True,
+                ):
+                    st.session_state.comments_range = _lbl
+                    st.rerun()
 
+    # ── Card 3: Next Agent Run ─────────────────────────────────────────────────
     with c3:
-        pending = metrics['pending_comments']
-        badge = f" ({pending})" if pending else ""
-        st.markdown(
-            f"""
-            <div class="metric-card">
-                <div class="metric-label">Comments Queued</div>
-                <div class="metric-value">{pending}</div>
-                <div class="metric-sub">pending approval</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        if st.button(f"💬 Comment Inbox{badge} →", key="nav_comments", use_container_width=True):
-            st.session_state.active_tab = 1
-            st.rerun()
-
-    with c4:
-        st.markdown(
-            f"""
-            <div class="metric-card">
-                <div class="metric-label">Warm Connections</div>
-                <div class="metric-value">{metrics['warm_influencers']}</div>
-                <div class="metric-sub">influencers engaged</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        if st.button("🤝 View Influencers →", key="nav_influencers", use_container_width=True):
-            st.session_state.active_tab = 2
-            st.rerun()
-
-    with c5:
         countdown = _next_agent_run()
         st.markdown(
             f"""
@@ -421,14 +421,13 @@ try:  # ── Wrap entire app body to catch SessionInfo errors ─────�
             """,
             unsafe_allow_html=True,
         )
-        st.markdown("<div style='height:31px'></div>", unsafe_allow_html=True)
 
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
     st.markdown("<hr/>", unsafe_allow_html=True)
     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
     # ── Custom tab nav ─────────────────────────────────────────────────────────────
-    pending_count = metrics["pending_comments"]
+    pending_count = pending_comments
     tab_labels = [
         "📝  Content Queue",
         f"💬  Comment Queue{f'  ({pending_count})' if pending_count else ''}",
