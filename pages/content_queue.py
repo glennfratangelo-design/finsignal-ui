@@ -248,7 +248,7 @@ def _render_draft_cards(rows: list[dict], api_url: str) -> None:
         scheduling_this = st.session_state.get("cq_scheduling_id") == row_id
         confirming_delete = st.session_state.get(f"cq_confirm_delete_{row_id}", False)
 
-        btn1, btn2, btn3, btn4, _spacer = st.columns([1.3, 1.2, 1, 0.6, 3])
+        btn1, btn1b, btn2, btn3, btn4, _spacer = st.columns([1.2, 1.2, 1.2, 1, 0.6, 2])
 
         with btn1:
             if st.button("📤 Post Now", key=f"cq_postnow_{row_id}", type="primary"):
@@ -271,6 +271,21 @@ def _render_draft_cards(rows: list[dict], api_url: str) -> None:
                         if details:
                             msg += f"\n\nDetails: {details}"
                         st.error(msg)
+                except Exception as e:
+                    st.error(f"Error: {e}")
+
+        with btn1b:
+            if st.button("📋 Save to LinkedIn", key=f"cq_draft_{row_id}"):
+                try:
+                    r = _requests.post(f"{api_url}/posts/{row_id}/publish-draft", timeout=20)
+                    data = r.json()
+                    if data.get("ok"):
+                        st.toast("✅ Saved as draft on LinkedIn!")
+                        st.rerun()
+                    elif data.get("action") == "reconnect" or r.status_code == 401:
+                        st.error("LinkedIn session expired — please reconnect.")
+                    else:
+                        st.error(f"Failed: {data.get('error', 'Unknown error')}")
                 except Exception as e:
                     st.error(f"Error: {e}")
 
