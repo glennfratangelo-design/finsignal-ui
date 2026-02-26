@@ -364,14 +364,14 @@ def _render_discover() -> None:
         btn_l, btn_r, _ = st.columns([1, 1, 4])
         with btn_l:
             if st.button(
-                "🔗 Connect",
+                "➕ Add to Watchlist",
                 key=f"disc_accept_{sid}",
                 type="primary",
                 use_container_width=True,
                 help="Adds to your connection queue",
             ):
                 db.accept_discover_suggestion(sid)
-                st.toast(f"Added {name} to connection queue")
+                st.toast(f"Added {name} to watchlist — connection request queued")
                 st.rerun()
         with btn_r:
             if st.button(

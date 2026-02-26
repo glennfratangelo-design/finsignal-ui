@@ -117,6 +117,7 @@ def render() -> None:
 
     # Load all connections
     all_conns = db.get_connections()
+    recent    = db.get_recent_connections()
     pending   = [c for c in all_conns if c["status"] in ("pending", "pending_manual")]
     sent      = [c for c in all_conns if c["status"] == "sent"]
     accepted  = [c for c in all_conns if c["status"] == "accepted"]
@@ -129,13 +130,14 @@ def render() -> None:
     # Filter chips
     filter_val = st.session_state.get("conn_filter", "Pending")
     counts = {
-        "Pending":  len(pending),
-        "Sent":     len(sent),
-        "Accepted": len(accepted),
+        "Recent":    len(recent),
+        "Pending":   len(pending),
+        "Sent":      len(sent),
+        "Accepted":  len(accepted),
         "Dismissed": len(dismissed),
     }
-    f1, f2, f3, f4, _ = st.columns([1, 1, 1, 1, 3])
-    for col, label in zip([f1, f2, f3, f4], ["Pending", "Sent", "Accepted", "Dismissed"]):
+    f1, f2, f3, f4, f5, _ = st.columns([1, 1, 1, 1, 1, 2])
+    for col, label in zip([f1, f2, f3, f4, f5], ["Recent", "Pending", "Sent", "Accepted", "Dismissed"]):
         with col:
             cnt = counts[label]
             is_active = filter_val == label
@@ -151,8 +153,38 @@ def render() -> None:
     st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
     active_filter = st.session_state.get("conn_filter", "Pending")
 
+    # ── RECENT ─────────────────────────────────────────────────────────────────
+    if active_filter == "Recent":
+        st.markdown(
+            "<div class='section-label'>Connections sent in the last 30 days</div>",
+            unsafe_allow_html=True,
+        )
+        if not recent:
+            st.markdown(
+                "<div class='empty-state'>No connections sent in the last 30 days.</div>",
+                unsafe_allow_html=True,
+            )
+        else:
+            for c in recent:
+                name      = c.get("name") or "Unknown"
+                handle    = c.get("linkedin_handle") or ""
+                url       = f"https://www.linkedin.com/in/{handle}/" if handle else "#"
+                sent_date = _fmt_date(c.get("sent_at"))
+                st.markdown(
+                    f"<div style='display:flex;align-items:center;padding:10px 0;"
+                    f"border-bottom:1px solid #2D3748;gap:12px;'>"
+                    f"<span style='flex:2;font-size:0.88rem;font-weight:700;color:#FAFAFA;'>{name}</span>"
+                    f"<span style='flex:2;font-size:0.82rem;'>"
+                    f"<a href='{url}' target='_blank' style='color:#0A66C2;text-decoration:none;'>"
+                    f"@{handle}</a></span>"
+                    f"<span style='flex:1;font-size:0.78rem;color:#6B7280;'>{sent_date}</span>"
+                    f"<span style='flex:1;'>{_status_pill('sent')}</span>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+
     # ── PENDING ────────────────────────────────────────────────────────────────
-    if active_filter == "Pending":
+    elif active_filter == "Pending":
         if auto_send:
             st.markdown(
                 "<div class='auto-banner'>🤖 Auto-send active — connections will be sent automatically "

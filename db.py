@@ -190,6 +190,13 @@ def dismiss_connection(row_id: int) -> dict:
     return _post(f"/connections/{row_id}/dismiss")
 
 
+def get_recent_connections() -> list[dict]:
+    try:
+        return _get("/connections/recent")
+    except Exception:
+        return []
+
+
 # ── Feeds ─────────────────────────────────────────────────────────────────────
 
 def get_feeds(priority: Optional[str] = None) -> list[dict]:
