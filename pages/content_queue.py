@@ -252,21 +252,27 @@ def _render_draft_cards(rows: list[dict], api_url: str) -> None:
 
         with btn1:
             if st.button("📤 Post Now", key=f"cq_postnow_{row_id}", type="primary"):
-                if not st.session_state.get("linkedin_access_token"):
-                    st.warning("Connect LinkedIn to post directly.")
-                else:
-                    try:
-                        r    = _requests.post(f"{api_url}/posts/{row_id}/publish", timeout=15)
-                        data = r.json()
-                        if data.get("ok"):
-                            db.update_content_status(row_id, "posted")
-                            li_id = data.get("linkedin_post_id", "")
-                            st.toast(f"✅ Posted to LinkedIn!{' ID: ' + li_id if li_id else ''}")
-                            st.rerun()
-                        else:
-                            st.error(data.get("error", "Publish failed"))
-                    except Exception as e:
-                        st.error(f"Error: {e}")
+                try:
+                    r    = _requests.post(f"{api_url}/posts/{row_id}/publish", timeout=20)
+                    data = r.json()
+                    if data.get("ok"):
+                        li_id = data.get("linkedin_post_id", "")
+                        st.toast(f"✅ Posted to LinkedIn!{' ID: ' + li_id if li_id else ''}")
+                        st.rerun()
+                    elif data.get("action") == "reconnect" or r.status_code == 401:
+                        st.error(
+                            "LinkedIn session expired — please disconnect and reconnect "
+                            "LinkedIn from the top of the page."
+                        )
+                    else:
+                        err = data.get("error") or "Publish failed"
+                        details = data.get("details")
+                        msg = f"Post failed: {err}"
+                        if details:
+                            msg += f"\n\nDetails: {details}"
+                        st.error(msg)
+                except Exception as e:
+                    st.error(f"Error: {e}")
 
         with btn2:
             sched_label = "⏰ Cancel" if scheduling_this else "⏰ Schedule"
@@ -477,6 +483,17 @@ def _render_ignored_rows(rows: list[dict]) -> None:
 
 def render(api_url: str = "http://localhost:8000") -> None:
     st.markdown(_CSS, unsafe_allow_html=True)
+
+    # Auto-fetch LinkedIn profile if not already in session state
+    if not st.session_state.get("linkedin_profile_name"):
+        try:
+            prof = _requests.get(f"{api_url}/auth/linkedin/profile", timeout=5).json()
+            if prof.get("connected"):
+                st.session_state["linkedin_profile_name"]        = prof.get("name", "")
+                st.session_state["linkedin_profile_picture_url"] = prof.get("picture_url", "")
+                st.session_state["linkedin_profile_title"]       = prof.get("headline", "")
+        except Exception:
+            pass
 
     all_rows  = db.get_content_queue()
     drafts    = [r for r in all_rows if r["status"] in ("draft", "draft_saved", "pending")]
