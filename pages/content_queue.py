@@ -441,15 +441,21 @@ def _render_posted_rows(rows: list[dict]) -> None:
         posted_at = (row.get("posted_at") or row.get("created_at") or "")[:16]
         topic     = _extract_topic(title, body)
         truncated = body[:100] + ("…" if len(body) > 100 else "")
+        li_id     = row.get("linkedin_post_id") or ""
+        link_html = (
+            f"<a href='https://www.linkedin.com/feed/update/{li_id}' target='_blank' "
+            f"style='color:#0A66C2;font-size:0.75rem;text-decoration:none;'>View ↗</a>"
+            if li_id else
+            "<span style='font-size:0.75rem;color:#4B5563;'>—</span>"
+        )
 
-        # No LinkedIn post URL stored for content_queue — show dash
         st.markdown(
             f"<div style='display:flex;align-items:center;padding:9px 0;"
             f"border-bottom:1px solid #2D3748;gap:12px;'>"
             f"<span style='flex:1.5;'>{_niche_pill(topic)}</span>"
             f"<span style='flex:5;font-size:0.83rem;color:#9AA0B2;'>{truncated}</span>"
             f"<span style='flex:1.5;font-size:0.75rem;color:#6B7280;'>{posted_at}</span>"
-            f"<span style='flex:1;font-size:0.75rem;color:#4B5563;'>—</span>"
+            f"<span style='flex:1;'>{link_html}</span>"
             f"</div>",
             unsafe_allow_html=True,
         )
