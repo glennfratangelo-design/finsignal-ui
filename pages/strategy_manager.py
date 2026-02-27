@@ -1507,7 +1507,7 @@ def render() -> None:
             f"""<div class='health-card {"warn" if warn else "ok"}'>
                 <div class='health-label'>Comments Today</div>
                 <div class='health-value'>{comments_today}/{max_comments}</div>
-                <div class='health-sub'>{"⚠ Limit reached" if warn else "Within limit"}</div>
+                <div class='health-sub'>{"⚠ Limit reached" if warn else "posted to LinkedIn"}</div>
             </div>""",
             unsafe_allow_html=True,
         )
@@ -1515,9 +1515,9 @@ def render() -> None:
         warn = posts_week >= max_posts
         st.markdown(
             f"""<div class='health-card {"warn" if warn else "ok"}'>
-                <div class='health-label'>Posts This Week</div>
+                <div class='health-label'>Posted This Week</div>
                 <div class='health-value'>{posts_week}/{max_posts}</div>
-                <div class='health-sub'>{"⚠ Limit reached" if warn else "Within limit"}</div>
+                <div class='health-sub'>{"⚠ Limit reached" if warn else "posted to LinkedIn"}</div>
             </div>""",
             unsafe_allow_html=True,
         )
