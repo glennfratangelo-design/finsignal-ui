@@ -363,7 +363,7 @@ def _render_discover() -> None:
 
         st.markdown(
             f"<div class='discover-card'>"
-            f"<div class='discover-name'>{name}</div>"
+            f"<div class='discover-name'><a href='https://www.linkedin.com/in/{handle}/' target='_blank' style='color:#FAFAFA;text-decoration:none;'>{name} ↗</a></div>"
             f"<div class='discover-headline'>{headline}</div>"
             f"{_niche_pill(niche)}"
             f"<div class='discover-reason' style='margin-top:8px;'>{reason}</div>"
