@@ -431,31 +431,13 @@ try:  # ── Wrap entire app body to catch SessionInfo errors ─────�
             """,
             unsafe_allow_html=True,
         )
-        agent_col1, agent_col2, agent_col3 = st.columns(3)
-        with agent_col1:
-            if st.button("▶ Research", key="run_research", use_container_width=True):
-                try:
-                    import requests as _req
-                    _req.post(f"{API_URL}/agents/research/run", timeout=5)
-                    st.toast("🔬 Research agent started")
-                except Exception:
-                    st.error("Failed to start")
-        with agent_col2:
-            if st.button("▶ Comments", key="run_comments", use_container_width=True):
-                try:
-                    import requests as _req
-                    _req.post(f"{API_URL}/agents/comments/run", timeout=5)
-                    st.toast("💬 Comment agent started")
-                except Exception:
-                    st.error("Failed to start")
-        with agent_col3:
-            if st.button("▶ Scraper", key="run_scraper", use_container_width=True):
-                try:
-                    import requests as _req
-                    _req.post(f"{API_URL}/agents/scraper/run", timeout=5)
-                    st.toast("🔍 Scraper started")
-                except Exception:
-                    st.error("Failed to start")
+        if st.button("▶ Run All Agents", key="run_all_agents", use_container_width=True):
+            try:
+                import requests as _req
+                _req.post(f"{API_URL}/agents/run-all", timeout=5)
+                st.toast("🚀 All agents started — scraper, comments, research")
+            except Exception:
+                st.error("Failed to start agents")
 
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
     st.markdown("<hr/>", unsafe_allow_html=True)
