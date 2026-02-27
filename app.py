@@ -436,6 +436,49 @@ try:  # ── Wrap entire app body to catch SessionInfo errors ─────�
     st.markdown("<hr/>", unsafe_allow_html=True)
     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
+    # ── Quick Compose ──────────────────────────────────────────────────────────
+    st.markdown(
+        "<div style='font-size:1.1rem;font-weight:700;color:#FAFAFA;margin-bottom:8px;'>"
+        "✍️ Quick Compose</div>"
+        "<div style='font-size:0.82rem;color:#6B7280;margin-bottom:10px;'>"
+        "Write a prompt and AI will generate a LinkedIn post using your voice and ICP.</div>",
+        unsafe_allow_html=True,
+    )
+
+    compose_prompt = st.text_area(
+        "What do you want to post about?",
+        placeholder="e.g. Write about the Treasury's new AI risk framework and what it means for CCOs managing AI-driven transaction monitoring...",
+        key="compose_prompt",
+        height=100,
+        label_visibility="collapsed",
+    )
+
+    compose_col, _ = st.columns([1, 3])
+    with compose_col:
+        if st.button("🚀 Generate Post", key="compose_generate", type="primary", use_container_width=True):
+            if compose_prompt and compose_prompt.strip():
+                with st.spinner("Generating post with your voice..."):
+                    try:
+                        import requests as _req
+                        r = _req.post(
+                            f"{API_URL}/compose",
+                            json={"prompt": compose_prompt.strip()},
+                            timeout=30,
+                        )
+                        data = r.json()
+                        if data.get("ok"):
+                            st.toast(f"✅ Post created: {data.get('title', 'New post')}")
+                            st.session_state.active_tab = 0
+                            st.rerun()
+                        else:
+                            st.error(f"Failed: {data.get('error', 'Unknown error')}")
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+            else:
+                st.warning("Enter a prompt first")
+
+    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+
     # ── Custom tab nav ─────────────────────────────────────────────────────────────
     pending_count = pending_comments
     tab_labels = [

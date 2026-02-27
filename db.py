@@ -88,6 +88,10 @@ def get_content_queue(status: Optional[str] = None) -> list[dict]:
     return result if isinstance(result, list) else []
 
 
+def compose_post(prompt: str) -> dict:
+    return _post("/compose", json={"prompt": prompt})
+
+
 def update_content_status(row_id: int, status: str) -> None:
     _put(f"/content-queue/{row_id}/status", {"status": status})
 
