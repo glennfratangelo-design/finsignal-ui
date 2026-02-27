@@ -368,7 +368,7 @@ def _render_discover() -> None:
                 key=f"disc_accept_{sid}",
                 type="primary",
                 use_container_width=True,
-                help="Adds to your connection queue",
+                help="Adds to watchlist + queues connection",
             ):
                 db.accept_discover_suggestion(sid)
                 st.toast(f"Added {name} to watchlist — connection request queued")

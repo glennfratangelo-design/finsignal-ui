@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 
 import streamlit as st
 import db
-from pages import content_queue, comment_queue, influencer_manager, strategy_manager, analytics
+from pages import content_queue, comment_queue, influencer_manager, strategy_manager, analytics, connections
 
 API_URL = os.getenv("API_URL", "http://localhost:8000")
 
@@ -444,10 +444,11 @@ try:  # ── Wrap entire app body to catch SessionInfo errors ─────�
         "🤝  Influencers",
         "⚙️  Strategy",
         "📊  Analytics",
+        "🔗  Connections",
     ]
 
-    t1, t2, t3, t4, t5 = st.columns(5)
-    tab_cols = [t1, t2, t3, t4, t5]
+    t1, t2, t3, t4, t5, t6 = st.columns(6)
+    tab_cols = [t1, t2, t3, t4, t5, t6]
 
     for i, (col, label) in enumerate(zip(tab_cols, tab_labels)):
         with col:
@@ -476,6 +477,8 @@ try:  # ── Wrap entire app body to catch SessionInfo errors ─────�
         strategy_manager.render()
     elif active == 4:
         analytics.render(api_url=API_URL)
+    elif active == 5:
+        connections.render()
 
 except Exception as _app_err:
     _err_str = str(_app_err)

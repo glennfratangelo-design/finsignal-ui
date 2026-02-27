@@ -1630,6 +1630,26 @@ def render() -> None:
         })
         st.toast("Posting strategy saved", icon="✅")
 
+    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='section-header'>Post Footer</div>"
+        "<div style='font-size:0.82rem;color:#6B7280;margin-top:-6px;margin-bottom:10px;'>"
+        "Optional text appended to every post (e.g. disclaimer, opinions notice). Leave blank for none.</div>",
+        unsafe_allow_html=True,
+    )
+    current_footer = cfg.get("post_footer", "")
+    new_footer = st.text_area(
+        "Footer text",
+        value=current_footer,
+        placeholder="e.g. Views are my own and do not represent my employer.",
+        key="strat_post_footer",
+        height=80,
+        label_visibility="collapsed",
+    )
+    if st.button("Save Footer", key="strat_save_footer", type="primary"):
+        db.update_strategy({"post_footer": new_footer.strip()})
+        st.toast("Post footer saved", icon="✅")
+
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
     st.markdown("<hr style='border-color:#2D3748;'/>", unsafe_allow_html=True)
     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
