@@ -1176,6 +1176,35 @@ def _render_icp_section() -> None:
                 st.session_state.sm_icp_draft = result.get("icp_draft")
         st.rerun()
 
+    # ICP Change History
+    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div style='font-size:0.9rem;font-weight:700;color:#FAFAFA;margin-bottom:8px;'>ICP Change History</div>",
+        unsafe_allow_html=True,
+    )
+    try:
+        import requests as _req
+        icp_history = _req.get(f"{db.API_URL}/icp/history", timeout=5).json()
+        if not icp_history:
+            st.markdown("<div style='font-size:0.82rem;color:#6B7280;font-style:italic;'>No changes recorded yet.</div>", unsafe_allow_html=True)
+        else:
+            for item in icp_history[:10]:
+                field = (item.get("field_changed") or "").replace("_", " ").title()
+                old_val = item.get("old_value") or "—"
+                new_val = item.get("new_value") or "—"
+                date = (item.get("created_at") or "")[:10]
+                st.markdown(
+                    f"<div style='border-left:3px solid #057642;padding:8px 12px;margin-bottom:8px;background:#141622;border-radius:0 6px 6px 0;'>"
+                    f"<div style='font-size:0.72rem;color:#6B7280;'>{date}</div>"
+                    f"<div style='font-size:0.82rem;color:#9AA0B2;margin-top:2px;'><strong>{field}</strong></div>"
+                    f"<div style='font-size:0.78rem;color:#6B7280;margin-top:2px;'>Was: {str(old_val)[:100]}</div>"
+                    f"<div style='font-size:0.82rem;color:#FAFAFA;margin-top:2px;'>Now: {str(new_val)[:100]}</div>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+    except Exception:
+        pass
+
 
 # ── Feed section helpers ──────────────────────────────────────────────────────
 
