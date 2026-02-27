@@ -630,6 +630,7 @@ def _render_voice_section() -> None:
     if st.session_state.sm_voice_chat_active:
         _render_voice_copilot()
         _render_voice_learning()
+        _render_voice_changelog()
         return
 
     vp = db.get_voice_profile()
@@ -655,6 +656,7 @@ def _render_voice_section() -> None:
     _render_voice_profile_card(vp)
     _render_voice_refine()
     _render_voice_learning()
+    _render_voice_changelog()
 
 
 def _render_voice_learning() -> None:
@@ -702,6 +704,34 @@ def _render_voice_learning() -> None:
             if st.button("✕ Reject", key=f"sm_vrej_{item_id}", use_container_width=True):
                 db.reject_voice_change(item_id)
                 st.rerun()
+
+
+def _render_voice_changelog() -> None:
+    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div style='font-size:0.9rem;font-weight:700;color:#FAFAFA;margin-bottom:8px;'>Change History</div>",
+        unsafe_allow_html=True,
+    )
+    history = db.get_voice_history()
+    accepted = [h for h in history if h.get("accepted") == 1]
+    if not accepted:
+        st.markdown("<div style='font-size:0.82rem;color:#6B7280;font-style:italic;'>No changes recorded yet.</div>", unsafe_allow_html=True)
+        return
+    for item in accepted[:10]:
+        field = (item.get("field_changed") or "").replace("_", " ").title()
+        old_val = item.get("old_value") or "—"
+        new_val = item.get("new_value") or "—"
+        date = (item.get("created_at") or "")[:10]
+        source = item.get("source") or "manual"
+        st.markdown(
+            f"<div style='border-left:3px solid #0A66C2;padding:8px 12px;margin-bottom:8px;background:#141622;border-radius:0 6px 6px 0;'>"
+            f"<div style='font-size:0.72rem;color:#6B7280;'>{date} · {source}</div>"
+            f"<div style='font-size:0.82rem;color:#9AA0B2;margin-top:2px;'><strong>{field}</strong></div>"
+            f"<div style='font-size:0.78rem;color:#6B7280;margin-top:2px;'>Was: {old_val[:100]}</div>"
+            f"<div style='font-size:0.82rem;color:#FAFAFA;margin-top:2px;'>Now: {new_val[:100]}</div>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
 
 
 # ── Topic co-pilot UI ─────────────────────────────────────────────────────────
