@@ -521,6 +521,20 @@ def _render_profile_row(label: str, field: str, display_html: str, edit_value: s
     st.markdown("<div style='height:4px;border-bottom:1px solid #2D3748;margin-bottom:4px;'></div>", unsafe_allow_html=True)
 
 
+_VOICE_FIELD_TIPS = {
+    "Tone": "The overall feeling of your writing — e.g. authoritative, conversational, provocative",
+    "Sentence Style": "How you structure sentences — short and punchy, long and complex, or mixed",
+    "Opens With": "How you typically start posts — bold claim, question, data point, story",
+    "Closes With": "How you end posts — CTA, question, summary, provocative statement",
+    "Use These Words": "Industry terms and phrases that define your expertise",
+    "Avoid These Words": "Overused buzzwords or phrases that don't sound like you",
+    "Formatting Rules": "Your preferences for line breaks, spacing, and structure",
+    "Contrarian Level": "How often you challenge conventional thinking — low/medium/high",
+    "Citation Rules": "How you reference data, reports, or news in your posts",
+    "Special Rules": "Any other writing rules specific to your style",
+}
+
+
 def _render_voice_profile_card(vp: dict) -> None:
     hc, bc = st.columns([4, 1])
     with hc:
@@ -537,45 +551,57 @@ def _render_voice_profile_card(vp: dict) -> None:
 
     st.markdown("<div class='icp-card' style='margin-top:8px;'>", unsafe_allow_html=True)
 
+    _tip = lambda label: st.markdown(f"<div style='font-size:0.7rem;color:#4B5563;margin:-4px 0 4px 0;'>{_VOICE_FIELD_TIPS.get(label, '')}</div>", unsafe_allow_html=True)
+
     tone_raw = _get_vp(vp, "tone_descriptors")
     _render_profile_row("Tone", "tone_descriptors", _tone_pills(tone_raw), tone_raw if isinstance(tone_raw, str) else ", ".join(tone_raw) if isinstance(tone_raw, list) else "")
+    _tip("Tone")
 
     _render_profile_row("Sentence Style", "sentence_style",
         f"<span style='color:#FAFAFA'>{_get_vp(vp, 'sentence_style', 'sentence_structure') or '<em style=\"color:#6B7280\">Not set</em>'}</span>",
         _get_vp(vp, "sentence_style", "sentence_structure"))
+    _tip("Sentence Style")
 
     _render_profile_row("Opens With", "opening_style",
         f"<span style='color:#FAFAFA'>{_get_vp(vp, 'opening_style', 'opening_patterns') or '<em style=\"color:#6B7280\">Not set</em>'}</span>",
         _get_vp(vp, "opening_style", "opening_patterns"))
+    _tip("Opens With")
 
     _render_profile_row("Closes With", "closing_style",
         f"<span style='color:#FAFAFA'>{_get_vp(vp, 'closing_style', 'closing_patterns') or '<em style=\"color:#6B7280\">Not set</em>'}</span>",
         _get_vp(vp, "closing_style", "closing_patterns"))
+    _tip("Closes With")
 
     vocab_pref = _get_vp(vp, "vocabulary_preferred")
     _render_profile_row("Use These Words", "vocabulary_preferred", _gray_pills(vocab_pref), vocab_pref)
+    _tip("Use These Words")
 
     vocab_avoid = _get_vp(vp, "vocabulary_avoided")
     _render_profile_row("Avoid These Words", "vocabulary_avoided", _red_pills(vocab_avoid), vocab_avoid)
+    _tip("Avoid These Words")
 
     fmt = _get_vp(vp, "formatting_rules", "structural_patterns")
     _render_profile_row("Formatting Rules", "formatting_rules",
         f"<span style='color:#FAFAFA'>{fmt or '<em style=\"color:#6B7280\">Not set</em>'}</span>",
         fmt)
+    _tip("Formatting Rules")
 
     contrarian = _get_vp(vp, "contrarian_level") or "medium"
     _render_profile_row("Contrarian Level", "contrarian_level",
         _contrarian_display(contrarian), contrarian)
+    _tip("Contrarian Level")
 
     cite = _get_vp(vp, "citation_rules")
     _render_profile_row("Citation Rules", "citation_rules",
         f"<span style='color:#FAFAFA;font-weight:500;'>{cite or '<em style=\"color:#6B7280\">Not set</em>'}</span>",
         cite)
+    _tip("Citation Rules")
 
     spec = _get_vp(vp, "special_rules")
     _render_profile_row("Special Rules", "special_rules",
         f"<span style='color:#FAFAFA'>{spec or '<em style=\"color:#6B7280\">Not set</em>'}</span>",
         spec)
+    _tip("Special Rules")
 
     st.markdown("</div>", unsafe_allow_html=True)
 
