@@ -371,7 +371,7 @@ def _render_discover() -> None:
                 help="Adds to watchlist + queues connection",
             ):
                 db.accept_discover_suggestion(sid)
-                st.toast(f"Added {name} to watchlist — connection request queued")
+                st.toast(f"✅ {name} added to watchlist")
                 st.rerun()
         with btn_r:
             if st.button(
