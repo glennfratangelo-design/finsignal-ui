@@ -167,6 +167,7 @@ def _render_watchlist() -> None:
                 new_name   = st.text_input("Full Name *", placeholder="e.g. Kieran Beer")
                 new_handle = st.text_input("LinkedIn Handle *", placeholder="kieranbeer  (no @)")
             with c2:
+                new_headline = st.text_input("Company / Title", placeholder="e.g. VP Compliance at JPMorgan")
                 new_niche = st.selectbox("Niche", _ALL_NICHES)
                 new_notes = st.text_input("Notes (optional)", placeholder="Optional context")
             save_col, _ = st.columns([1, 3])
@@ -181,6 +182,7 @@ def _render_watchlist() -> None:
                         linkedin_handle=new_handle.strip().lstrip("@"),
                         niche=new_niche,
                         notes=new_notes.strip(),
+                        headline=new_headline.strip(),
                     )
                     st.session_state.im_show_add = False
                     st.toast(f"Added {new_name.strip()} to watchlist")
@@ -222,6 +224,7 @@ def _render_watchlist() -> None:
         "<div style='display:flex;padding:6px 14px;border-bottom:2px solid #374151;"
         "font-size:0.72rem;color:#6B7280;text-transform:uppercase;letter-spacing:0.06em;gap:12px;'>"
         "<span style='flex:2;'>Name</span>"
+        "<span style='flex:2;'>Company / Title</span>"
         "<span style='flex:2;'>Handle</span>"
         "<span style='flex:1;'>Niche</span>"
         "<span style='flex:1;'>Status</span>"
@@ -258,11 +261,17 @@ def _render_watchlist() -> None:
                     st.rerun()
             continue
 
-        col_name, col_handle, col_niche, col_status, col_comments, col_actions = st.columns([2, 2, 1, 1, 1, 1])
+        col_name, col_company, col_handle, col_niche, col_status, col_comments, col_actions = st.columns([2, 2, 2, 1, 1, 1, 1])
         with col_name:
             st.markdown(
                 f"<div style='font-size:0.88rem;font-weight:700;color:#FAFAFA;"
                 f"padding:6px 0;'>{name}</div>",
+                unsafe_allow_html=True,
+            )
+        with col_company:
+            headline = row.get("headline") or ""
+            st.markdown(
+                f"<div style='font-size:0.82rem;color:#9AA0B2;padding:6px 0;'>{headline or '—'}</div>",
                 unsafe_allow_html=True,
             )
         with col_handle:

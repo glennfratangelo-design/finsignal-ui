@@ -134,12 +134,13 @@ def get_influencers(status: Optional[str] = None) -> list[dict]:
     return result if isinstance(result, list) else []
 
 
-def add_influencer(name: str, linkedin_handle: str, niche: str, notes: str = "") -> None:
+def add_influencer(name: str, linkedin_handle: str, niche: str, notes: str = "", headline: str = "") -> None:
     _post("/influencers", {
         "name": name,
         "linkedin_handle": linkedin_handle,
         "niche": niche,
         "notes": notes,
+        "headline": headline,
     })
 
 
